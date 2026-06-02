@@ -1,0 +1,947 @@
+﻿@page "/tabuleiro/fronteiras/{IdTabuleiro:int}"
+
+@using BancoImobiliario.Models
+@using BancoImobiliario.Services.Tabuleiro
+
+@inject GerenciamentoTabuleiroService GerenciamentoService
+@inject NavigationManager NavigationManager
+@inject TabuleiroService TabuleiroService
+
+<PageTitle>Gerenciar Fronteiras - Banco Imobiliário</PageTitle>
+
+<div class="fronteiras-editor-page">
+
+    @if (_carregando)
+    {
+        <div class="loading-panel">
+            <i class="bi bi-hourglass-split spin"></i>
+            <span>Carregando rotas e mapa...</span>
+        </div>
+    }
+    else if (_tabuleiro == null || _layoutOriginal.Count == 0)
+    {
+        <div class="alert error">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <span>Tabuleiro não encontrado ou layout não desenhado.</span>
+        </div>
+    }
+    else
+    {
+        <div class="editor-header">
+            <div class="header-info">
+                <button type="button" class="btn-voltar" @onclick="Voltar">
+                    <i class="bi bi-arrow-left"></i> Voltar
+                </button>
+                <h1>Rotas e Fronteiras: @_tabuleiro.Nome</h1>
+                <p>Crie atalhos e caminhos alternativos clicando nas casas do grid.</p>
+            </div>
+
+            <div class="zoom-controls">
+                <button type="button" class="btn-tool" @onclick="() => AjustarZoom(-0.1)" title="Menos Zoom"><i class="bi bi-zoom-out"></i></button>
+                <span class="zoom-value">@((_zoom * 100).ToString("F0"))%</span>
+                <button type="button" class="btn-tool" @onclick="() => AjustarZoom(0.1)" title="Mais Zoom"><i class="bi bi-zoom-in"></i></button>
+                <button type="button" class="btn-tool" @onclick="() => _zoom = 1.0" title="Resetar Zoom"><i class="bi bi-aspect-ratio"></i></button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_mensagemAlerta))
+        {
+            <div class="alert warning temp-alert">
+                <i class="bi bi-exclamation-circle"></i>
+                <span>@_mensagemAlerta</span>
+            </div>
+        }
+
+        <div class="editor-workspace">
+
+            @* PALETA LATERAL: LISTA DE FRONTEIRAS *@
+            <div class="paleta-lateral">
+                <h3>Vias Cadastradas</h3>
+
+                <div class="instrucao-passos">
+                    @if (_casaOrigem == null)
+                    {
+                        <span class="passo ativo"><i class="bi bi-1-circle"></i> Selecione a Origem</span>
+                        <span class="passo inativo"><i class="bi bi-2-circle"></i> Selecione o Destino</span>
+                    }
+                    else
+                    {
+                        <span class="passo ok"><i class="bi bi-check-circle-fill"></i> Origem: Casa @_casaOrigem</span>
+                        <span class="passo ativo"><i class="bi bi-2-circle"></i> Selecione o Destino</span>
+                        <button type="button" class="btn-cancelar-selecao" @onclick="() => _casaOrigem = null">Cancelar</button>
+                    }
+                </div>
+
+                <div class="lista-fronteiras">
+                    @if (_fronteiras.Count == 0)
+                    {
+                        <div class="vazio">Nenhum atalho criado ainda.</div>
+                    }
+                    else
+                    {
+                        @foreach (var front in _fronteiras)
+                        {
+                            <div class="fronteira-card"
+                                 @onmouseenter="() => DestacarRota(front.PosicaoOrigem, front.PosicaoDestino)"
+                                 @onmouseleave="RemoverDestaqueRota">
+                                <div class="rota-info">
+                                    <span class="rota-casas">
+                                        <span class="tag-origem">@front.PosicaoOrigem</span>
+                                        <i class="bi bi-arrow-right"></i>
+                                        <span class="tag-destino">@front.PosicaoDestino</span>
+                                    </span>
+                                    <span class="rota-valor">Pedágio: R$ @front.ValorTravessia.ToString("N2")</span>
+                                    @if (front.EfeitoRequeridoId.HasValue)
+                                    {
+                                        <span class="rota-efeito"><i class="bi bi-magic"></i> Requer Efeito #@front.EfeitoRequeridoId</span>
+                                    }
+                                </div>
+                                <button type="button" class="btn-excluir-rota" @onclick="() => ExcluirFronteira(front.FronteiraId)" title="Excluir Rota">
+                                    <i class="bi bi-trash3-fill"></i>
+                                </button>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            @* O GRID VISUAL (LEITURA E SELEÇÃO) *@
+            <div class="canvas-area @(_origemHover.HasValue ? "has-highlight" : "")">
+                <div class="grid-wrapper" style="--zoom: @_zoom.ToString(System.Globalization.CultureInfo.InvariantCulture);">
+                    <div class="grid-tabuleiro" style="--cols: @_tabuleiro.LarguraGrade; --rows: @_tabuleiro.AlturaGrade;">
+
+                        @for (int l = 0; l < _tabuleiro.AlturaGrade; l++)
+                        {
+                            for (int c = 0; c < _tabuleiro.LarguraGrade; c++)
+                            {
+                                var casaNaPosicao = ObterCasaNaPosicao(c, l);
+
+                                // Variáveis para os destaques visuais
+                                var isOrigemDestaque = casaNaPosicao?.Posicao == _origemHover;
+                                var isDestinoDestaque = casaNaPosicao?.Posicao == _destinoHover;
+                                var temSaida = casaNaPosicao != null && _fronteiras.Any(f => f.PosicaoOrigem == casaNaPosicao.Posicao);
+                                var temChegada = casaNaPosicao != null && _fronteiras.Any(f => f.PosicaoDestino == casaNaPosicao.Posicao);
+
+                                <div class="celula-grid @(casaNaPosicao != null ? "ocupada clickavel" : "")
+                                    @(casaNaPosicao?.Posicao == _casaOrigem ? "origem-selecionada" : "")
+                                    @(isOrigemDestaque ? "destaque-origem" : "")
+                                    @(isDestinoDestaque ? "destaque-destino" : "")"
+                                     @onclick="() => ProcessarCliqueGrid(casaNaPosicao)">
+
+                                    @if (casaNaPosicao != null)
+                                    {
+                                        <div class="casa-colocada">
+                                            @casaNaPosicao.Posicao
+                                        </div>
+
+                                        @if (temSaida)
+                                        {
+                                            <span class="badge-fronteira badge-saida" title="Origem de Rota"><i class="bi bi-box-arrow-up-right"></i></span>
+                                        }
+                                        @if (temChegada)
+                                        {
+                                            <span class="badge-fronteira badge-chegada" title="Destino de Rota"><i class="bi bi-box-arrow-in-down-left"></i></span>
+                                        }
+                                    }
+                                </div>
+                            }
+                        }
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@* ===== MODAL DE CONFIGURAÇÃO DA FRONTEIRA ===== *@
+@if (_exibirModal)
+{
+    <div class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="bi bi-signpost-split-fill"></i> Configurar Rota</h2>
+                <button type="button" class="close-btn" @onclick="FecharModal"><i class="bi bi-x-lg"></i></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="rota-destaque">
+                    <div class="ponto"><i class="bi bi-geo-alt-fill"></i> Origem: <strong>Casa @_novaFronteira.PosicaoOrigem</strong></div>
+                    <i class="bi bi-arrow-right-circle rota-seta"></i>
+                    <div class="ponto"><i class="bi bi-flag-fill"></i> Destino: <strong>Casa @_novaFronteira.PosicaoDestino</strong></div>
+                </div>
+
+                <div class="field">
+                    <label>Valor da Travessia (Pedágio)</label>
+                    <div class="input-shell">
+                        <span class="currency">R$</span>
+                        <input type="number" step="any" class="setup-input"
+                               value="@_novaFronteira.ValorTravessia.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                               @onchange="AtualizarValorTravessia" />
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label>Efeito Requerido (Opcional)</label>
+                    <div class="input-shell">
+                        <i class="bi bi-magic input-icon"></i>
+                        <input type="number" class="setup-input" placeholder="ID do Efeito (Ex: 5)"
+                               value="@_novaFronteira.EfeitoRequeridoId"
+                               @onchange="AtualizarEfeitoRequerido" />
+                    </div>
+                    <small>Deixe em branco se a rota for de acesso livre.</small>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn secondary" @onclick="FecharModal">Cancelar</button>
+                    <button type="button" class="btn primary" @onclick="ConfirmarFronteira">
+                        <i class="bi bi-check2-circle"></i> Criar Fronteira
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .fronteiras-editor-page {
+        height: 100vh;
+        background: #050810;
+        color: #e5e7eb;
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    /* Header & Base Styles (Mantendo a identidade do Layout Editor) */
+    .editor-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        background: rgba(15, 23, 42, 0.8);
+        padding: 1rem 1.5rem;
+        border-radius: 12px;
+        border: 1px solid rgba(148,163,184,0.1);
+        flex-shrink: 0;
+    }
+
+    .header-info h1 {
+        font-size: 1.4rem;
+        margin: 0.5rem 0 0.2rem;
+    }
+
+    .header-info p {
+        color: #94a3b8;
+        font-size: 0.9rem;
+        margin: 0;
+    }
+
+    .btn-voltar {
+        background: transparent;
+        border: none;
+        color: #60a5fa;
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 700;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+
+        .btn-voltar:hover {
+            color: #3b82f6;
+            text-decoration: underline;
+        }
+
+    .zoom-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: rgba(0,0,0,0.3);
+        padding: 0.4rem;
+        border-radius: 8px;
+        border: 1px solid rgba(148,163,184,0.2);
+    }
+
+    .btn-tool {
+        background: transparent;
+        border: none;
+        color: #94a3b8;
+        cursor: pointer;
+        padding: 0.4rem;
+        border-radius: 4px;
+        transition: 0.2s;
+    }
+
+        .btn-tool:hover {
+            background: rgba(148,163,184,0.2);
+            color: #f8fafc;
+        }
+
+    .zoom-value {
+        font-weight: 700;
+        width: 45px;
+        text-align: center;
+        font-size: 0.9rem;
+    }
+
+    .editor-workspace {
+        display: flex;
+        gap: 1.5rem;
+        flex: 1;
+        overflow: hidden;
+    }
+
+    /* Paleta e Lista de Fronteiras */
+    .paleta-lateral {
+        width: 320px;
+        background: rgba(15,23,42,0.6);
+        border: 1px solid rgba(148,163,184,0.1);
+        border-radius: 12px;
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        flex-shrink: 0;
+    }
+
+        .paleta-lateral h3 {
+            margin: 0;
+            font-size: 1.1rem;
+            border-bottom: 1px solid rgba(148,163,184,0.1);
+            padding-bottom: 0.8rem;
+        }
+
+    .instrucao-passos {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        background: #0f172a;
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid rgba(148,163,184,0.15);
+    }
+
+    .passo {
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #64748b;
+        font-weight: 600;
+    }
+
+        .passo.ativo {
+            color: #38bdf8;
+        }
+
+        .passo.ok {
+            color: #10b981;
+        }
+
+    .btn-cancelar-selecao {
+        margin-top: 0.5rem;
+        background: rgba(239,68,68,0.1);
+        color: #fca5a5;
+        border: 1px dashed rgba(239,68,68,0.3);
+        border-radius: 6px;
+        padding: 0.3rem;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+
+        .btn-cancelar-selecao:hover {
+            background: rgba(239,68,68,0.2);
+        }
+
+    .lista-fronteiras {
+        flex: 1;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 0.8rem;
+        padding-right: 0.4rem;
+    }
+
+    .vazio {
+        color: #64748b;
+        font-size: 0.85rem;
+        text-align: center;
+        margin-top: 1rem;
+    }
+
+    .fronteira-card {
+        background: rgba(30,41,59,0.5);
+        border: 1px solid rgba(148,163,184,0.15);
+        border-radius: 8px;
+        padding: 0.8rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: 0.2s;
+    }
+
+        .fronteira-card:hover {
+            border-color: rgba(56,189,248,0.3);
+            background: rgba(30,41,59,0.8);
+        }
+
+    .rota-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+    }
+
+    .rota-casas {
+        font-weight: 800;
+        color: #f1f5f9;
+        font-size: 0.95rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .rota-valor {
+        color: #10b981;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .rota-efeito {
+        color: #c084fc;
+        font-size: 0.75rem;
+    }
+
+    .btn-excluir-rota {
+        background: transparent;
+        border: none;
+        color: #ef4444;
+        cursor: pointer;
+        padding: 0.5rem;
+        border-radius: 6px;
+        transition: 0.2s;
+    }
+
+        .btn-excluir-rota:hover {
+            background: rgba(239,68,68,0.15);
+        }
+
+    /* Canvas e Grid Visual */
+    .canvas-area {
+        flex: 1;
+        overflow: auto;
+        background: #0b1120;
+        border: 1px solid rgba(148,163,184,0.15);
+        border-radius: 12px;
+    }
+
+    .grid-wrapper {
+        min-width: 100%;
+        min-height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem;
+        transform: scale(var(--zoom));
+        transform-origin: center center;
+        transition: transform 0.15s ease-out;
+    }
+
+    .grid-tabuleiro {
+        display: grid;
+        grid-template-columns: repeat(var(--cols), 65px);
+        grid-template-rows: repeat(var(--rows), 65px);
+        gap: 4px;
+        margin: auto;
+        background: rgba(15, 23, 42, 0.4);
+        padding: 4px;
+        border-radius: 8px;
+        border: 1px solid rgba(148,163,184,0.1);
+    }
+
+    .celula-grid {
+        background: rgba(30,41,59,0.3);
+        border: 1px dashed rgba(148,163,184,0.15);
+        border-radius: 6px;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: 0.2s;
+    }
+
+        /* Estados da Célula para Fronteiras */
+        .celula-grid.ocupada.clickavel {
+            cursor: crosshair;
+        }
+
+            .celula-grid.ocupada.clickavel:hover .casa-colocada {
+                border-color: #38bdf8;
+                transform: scale(1.05);
+            }
+
+    .origem-selecionada .casa-colocada {
+        background: #eab308 !important;
+        border-color: #fde047 !important;
+        color: #0f172a !important;
+        box-shadow: 0 0 20px rgba(234, 179, 8, 0.6);
+        transform: scale(1.1);
+        z-index: 10;
+    }
+
+    .casa-colocada {
+        width: 100%;
+        height: 100%;
+        background: #1e293b;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 1.2rem;
+        color: #f8fafc;
+        border: 2px solid #475569;
+        transition: all 0.2s;
+        pointer-events: none;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: #0f172a;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 16px;
+        width: 100%;
+        max-width: 450px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.2rem 1.5rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+    .close-btn {
+        background: transparent;
+        border: none;
+        color: #94a3b8;
+        font-size: 1.2rem;
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+
+        .close-btn:hover {
+            color: #f8fafc;
+        }
+
+    .modal-body {
+        padding: 1.5rem;
+    }
+
+    .rota-destaque {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: rgba(56,189,248,0.1);
+        border: 1px solid rgba(56,189,248,0.2);
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+    }
+
+    .rota-seta {
+        font-size: 1.5rem;
+        color: #38bdf8;
+    }
+
+    .ponto {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        font-size: 0.8rem;
+        color: #94a3b8;
+    }
+
+        .ponto strong {
+            font-size: 1.1rem;
+            color: #f1f5f9;
+            margin-top: 0.2rem;
+        }
+
+    .field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        margin-bottom: 1.2rem;
+    }
+
+        .field label {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #cbd5e1;
+        }
+
+        .field small {
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+
+    .input-shell {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .currency, .input-icon {
+        position: absolute;
+        left: 0.75rem;
+        color: #64748b;
+        font-size: 0.95rem;
+        font-weight: 700;
+    }
+
+    .setup-input {
+        width: 100%;
+        background: #090d16;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        padding: 0.6rem 0.6rem 0.6rem 2.3rem;
+        border-radius: 8px;
+        color: #f8fafc;
+        font-size: 0.95rem;
+    }
+
+        .setup-input:focus {
+            border-color: #3b82f6;
+            outline: none;
+        }
+
+    .modal-actions {
+        margin-top: 1.5rem;
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.8rem;
+        border-top: 1px solid rgba(148,163,184,0.1);
+        padding-top: 1.2rem;
+    }
+
+    .btn {
+        padding: 0.6rem 1.2rem;
+        border-radius: 8px;
+        font-weight: 700;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        border: none;
+    }
+
+        .btn.primary {
+            background: #2563eb;
+            color: white;
+        }
+
+            .btn.primary:hover {
+                background: #1d4ed8;
+            }
+
+        .btn.secondary {
+            background: rgba(148,163,184,0.1);
+            color: #cbd5e1;
+        }
+
+    .temp-alert {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        animation: fadeOut 3s forwards;
+    }
+
+    .alert {
+        padding: 1rem;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-weight: 600;
+    }
+
+        .alert.warning {
+            background: rgba(234,179,8,0.1);
+            color: #fde047;
+            border: 1px solid rgba(234,179,8,0.2);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+    /* Ajustes visuais da lista */
+    .tag-origem {
+        background: #0ea5e9;
+        color: white;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+    }
+
+    .tag-destino {
+        background: #a855f7;
+        color: white;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+    }
+
+    /* Efeito Modo Foco no Canvas */
+    .canvas-area {
+        transition: background-color 0.3s;
+    }
+
+        .canvas-area.has-highlight .celula-grid:not(.destaque-origem):not(.destaque-destino) {
+            opacity: 0.3;
+            filter: grayscale(80%);
+        }
+
+    /* Destaques de Origem e Destino ao passar o rato */
+    .destaque-origem .casa-colocada {
+        background: #0ea5e9 !important;
+        border-color: #38bdf8 !important;
+        box-shadow: 0 0 25px rgba(14, 165, 233, 0.8);
+        transform: scale(1.15);
+        z-index: 20;
+    }
+
+    .destaque-destino .casa-colocada {
+        background: #a855f7 !important;
+        border-color: #c084fc !important;
+        box-shadow: 0 0 25px rgba(168, 85, 247, 0.8);
+        transform: scale(1.15);
+        z-index: 20;
+    }
+
+    /* Badges Persistentes (Ícones pequeninos nas casas) */
+    .badge-fronteira {
+        position: absolute;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.65rem;
+        color: white;
+        z-index: 5;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+    }
+
+    .badge-saida {
+        top: -6px;
+        right: -6px;
+        background: #0ea5e9;
+        border: 2px solid #0b1120;
+    }
+
+    .badge-chegada {
+        bottom: -6px;
+        left: -6px;
+        background: #a855f7;
+        border: 2px solid #0b1120;
+    }
+</style>
+
+@code {
+    [Parameter] public int IdTabuleiro { get; set; }
+    
+    private Models.Tabuleiros? _tabuleiro;
+    private List<LayoutTabuleiro> _layoutOriginal = new();
+    private List<TabuleiroFronteira> _fronteiras = new();
+
+    private bool _carregando = true;
+    private double _zoom = 1.0;
+    private string? _mensagemAlerta;
+
+    private int? _casaOrigem = null;
+    private bool _exibirModal = false;
+    // Variáveis de controlo do Hover
+    private int? _origemHover = null;
+    private int? _destinoHover = null;
+
+    // --- (Adicione estes métodos em qualquer lugar do seu @code) ---
+
+    private void DestacarRota(int origem, int destino)
+    {
+        _origemHover = origem;
+        _destinoHover = destino;
+    }
+
+    private void RemoverDestaqueRota()
+    {
+        _origemHover = null;
+        _destinoHover = null;
+    }
+    private TabuleiroFronteira _novaFronteira = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarDadosAsync();
+    }
+
+    private async Task CarregarDadosAsync()
+    {
+        _tabuleiro = await GerenciamentoService.ObterPorIdAsync(IdTabuleiro);
+
+        if (_tabuleiro != null)
+        {
+            var layoutSalvo = await TabuleiroService.ObterLayoutPorTabuleiroIdAsync(IdTabuleiro);
+            if (layoutSalvo != null)
+            {
+                _layoutOriginal = layoutSalvo;
+            }
+
+            // Busca as fronteiras que já existem no banco
+            _fronteiras = await GerenciamentoService.ObterFronteirasAsync(IdTabuleiro);
+        }
+
+        _carregando = false;
+    }
+
+    private void AjustarZoom(double delta)
+    {
+        _zoom += delta;
+        if (_zoom < 0.3) _zoom = 0.3;
+        if (_zoom > 2.5) _zoom = 2.5;
+    }
+
+    private LayoutTabuleiro? ObterCasaNaPosicao(int coluna, int linha)
+    {
+        return _layoutOriginal.FirstOrDefault(c => c.Coluna == coluna && c.Linha == linha);
+    }
+
+    // A Lógica dos 2 Cliques
+    private void ProcessarCliqueGrid(LayoutTabuleiro? casaClicada)
+    {
+        if (casaClicada == null) return; // Clicou no vazio
+
+        if (_casaOrigem == null)
+        {
+            // Primeiro Clique: Define a Origem
+            _casaOrigem = casaClicada.Posicao;
+        }
+        else
+        {
+            // Segundo Clique: Se clicou nela mesma, cancela
+            if (_casaOrigem == casaClicada.Posicao)
+            {
+                _casaOrigem = null;
+                return;
+            }
+
+            // Impede criar rota para uma vizinha imediata (pois isso já é o caminho natural)
+            if (Math.Abs(_casaOrigem.Value - casaClicada.Posicao) == 1)
+            {
+                DispararAlerta("Não é possível criar fronteira entre casas sequenciais.");
+                _casaOrigem = null;
+                return;
+            }
+
+            // Abre o modal para configurar a rota
+            AbrirModalFronteira(_casaOrigem.Value, casaClicada.Posicao);
+        }
+    }
+
+    private void AbrirModalFronteira(int origem, int destino)
+    {
+        _novaFronteira = new TabuleiroFronteira
+        {
+            TabuleiroId = IdTabuleiro,
+            PosicaoOrigem = origem,
+            PosicaoDestino = destino,
+            ValorTravessia = 0, // Valor default
+            EfeitoRequeridoId = null
+        };
+        _exibirModal = true;
+    }
+
+    private void FecharModal()
+    {
+        _exibirModal = false;
+        _casaOrigem = null; // Reseta o estado
+    }
+
+    // Handlers para os inputs devido à cultura decimal pt-BR vs HTML5
+    private void AtualizarValorTravessia(ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+            _novaFronteira.ValorTravessia = v;
+    }
+
+    private void AtualizarEfeitoRequerido(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v))
+            _novaFronteira.EfeitoRequeridoId = v;
+        else
+            _novaFronteira.EfeitoRequeridoId = null;
+    }
+
+    private async Task ConfirmarFronteira()
+    {
+        try
+        {
+            await GerenciamentoService.SalvarFronteiraAsync(_novaFronteira);
+
+            // Recarrega a lista do banco
+            _fronteiras = await GerenciamentoService.ObterFronteirasAsync(IdTabuleiro);
+            FecharModal();
+        }
+        catch (Exception ex)
+        {
+            DispararAlerta(ex.Message);
+        }
+    }
+
+    private async Task ExcluirFronteira(int idFronteira)
+    {
+        await GerenciamentoService.ExcluirFronteiraAsync(idFronteira);
+        _fronteiras = await GerenciamentoService.ObterFronteirasAsync(IdTabuleiro);
+    }
+
+    private void Voltar()
+    {
+        NavigationManager.NavigateTo("/tabuleiro/gerenciar");
+    }
+
+    private async void DispararAlerta(string mensagem)
+    {
+        _mensagemAlerta = mensagem;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(3500);
+        _mensagemAlerta = null;
+        await InvokeAsync(StateHasChanged);
+    }
+}

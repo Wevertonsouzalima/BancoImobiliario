@@ -1,0 +1,454 @@
+﻿@* Components/Jogo/DadoConfiguravel.razor *@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="dado-config-wrapper">
+
+    <div class="dado-palco">
+        <div class="dado-cubo @_estadoCss">
+            <div class="dado-face face-numero">
+                @if (_estado == EstadoDado.Revelado && _valorRevelado.HasValue)
+                {
+                    <span class="numero-final">@_valorRevelado</span>
+                }
+                else if (_estado == EstadoDado.Arremessando)
+                {
+                    <span class="numero-embaralhando">@_numeroPiscando</span>
+                }
+                else
+                {
+                    <span class="numero-idle">@(_valorRevelado ?? MinValor)</span>
+                }
+            </div>
+        </div>
+
+        @if (_estado == EstadoDado.Revelado && _valorRevelado.HasValue)
+        {
+            <div class="brilho-revelacao"></div>
+        }
+    </div>
+
+    @if (_estado == EstadoDado.Revelado && _valorRevelado.HasValue)
+    {
+        <div class="resultado-banner">
+            <span>Resultado</span>
+            <strong>@_valorRevelado</strong>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_erro))
+    {
+        <div class="dado-erro">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span>@_erro</span>
+        </div>
+    }
+
+    <button type="button"
+            class="dado-config-botao"
+            @onclick="RolarAsync"
+            disabled="@(_estado == EstadoDado.Arremessando || Desabilitado)">
+        <i class="bi bi-dice-5"></i>
+        @TextoBotao
+    </button>
+
+    @if (MostrarRegras)
+    {
+        <div class="dado-regras">
+            <span>Intervalo @MinValor–@MaxValor</span>
+            @if (SoPar)
+            {
+                <span>• só pares</span>
+            }
+            @if (SoImpar)
+            {
+                <span>• só ímpares</span>
+            }
+            @if (NumerosRestritos is { Count: > 0 })
+            {
+                <span>• exceto @string.Join(", ", NumerosRestritos)</span>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .dado-config-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: .9rem;
+        padding: 1rem;
+    }
+
+    .dado-palco {
+        position: relative;
+        width: 110px;
+        height: 110px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        perspective: 700px;
+    }
+
+    .dado-cubo {
+        width: 80px;
+        height: 80px;
+        border-radius: 18px;
+        background: linear-gradient(150deg, #f8fafc, #cbd5e1);
+        border: 1px solid rgba(0,0,0,.18);
+        box-shadow: inset 0 -6px 14px rgba(0,0,0,.18), 0 14px 30px rgba(0,0,0,.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .dado-face {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+    }
+
+    .numero-final,
+    .numero-embaralhando,
+    .numero-idle {
+        font-weight: 900;
+        color: #1e293b;
+        line-height: 1;
+    }
+
+    .numero-final {
+        font-size: 2.6rem;
+    }
+
+    .numero-embaralhando {
+        font-size: 2.2rem;
+        opacity: .75;
+    }
+
+    .numero-idle {
+        font-size: 2.4rem;
+        opacity: .55;
+    }
+
+    /* Estado: arremessando — chacoalha e gira */
+    .dado-cubo.arremessando {
+        animation: arremesso .55s cubic-bezier(.36,.07,.19,.97) infinite;
+    }
+
+    @@keyframes arremesso {
+        0% {
+            transform: translateY(0) rotate(0deg) scale(1);
+        }
+
+        25% {
+            transform: translateY(-22px) rotate(160deg) scale(1.05);
+        }
+
+        50% {
+            transform: translateY(4px) rotate(300deg) scale(.96);
+        }
+
+        75% {
+            transform: translateY(-14px) rotate(440deg) scale(1.03);
+        }
+
+        100% {
+            transform: translateY(0) rotate(720deg) scale(1);
+        }
+    }
+
+    /* Estado: revelado — "pop" de destaque */
+    .dado-cubo.revelado {
+        animation: revelar .6s cubic-bezier(.34,1.56,.64,1);
+        background: linear-gradient(150deg, #ffffff, #bbf7d0);
+        box-shadow: inset 0 -6px 14px rgba(0,0,0,.12), 0 0 0 4px rgba(34,197,94,.35), 0 14px 36px rgba(34,197,94,.4);
+    }
+
+    @@keyframes revelar {
+        0% {
+            transform: scale(.4) rotate(-40deg);
+            opacity: .2;
+        }
+
+        55% {
+            transform: scale(1.25) rotate(8deg);
+            opacity: 1;
+        }
+
+        100% {
+            transform: scale(1) rotate(0deg);
+        }
+    }
+
+    /* Brilho irradiando ao revelar */
+    .brilho-revelacao {
+        position: absolute;
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(134,239,172,.7), transparent 70%);
+        animation: brilho .7s ease-out forwards;
+        pointer-events: none;
+    }
+
+    @@keyframes brilho {
+        0% {
+            transform: scale(.5);
+            opacity: .9;
+        }
+
+        100% {
+            transform: scale(2.6);
+            opacity: 0;
+        }
+    }
+
+    .resultado-banner {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: .1rem;
+        animation: subir .4s ease-out;
+    }
+
+    @@keyframes subir {
+        from {
+            transform: translateY(8px);
+            opacity: 0;
+        }
+
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+
+    .resultado-banner span {
+        color: #94a3b8;
+        font-size: .76rem;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        font-weight: 800;
+    }
+
+    .resultado-banner strong {
+        font-size: 2rem;
+        color: #86efac;
+        font-weight: 900;
+    }
+
+    .dado-config-botao {
+        border: 0;
+        border-radius: 14px;
+        min-height: 44px;
+        padding: .65rem 1.2rem;
+        display: inline-flex;
+        align-items: center;
+        gap: .5rem;
+        font-weight: 900;
+        cursor: pointer;
+        color: white;
+        background: linear-gradient(135deg, #2563eb, #3b82f6);
+        transition: 160ms ease;
+    }
+
+        .dado-config-botao:disabled {
+            opacity: .55;
+            cursor: not-allowed;
+        }
+
+    .dado-regras {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .3rem;
+        justify-content: center;
+        color: #94a3b8;
+        font-size: .76rem;
+    }
+
+    .dado-erro {
+        display: flex;
+        gap: .4rem;
+        align-items: center;
+        color: #fca5a5;
+        font-size: .82rem;
+    }
+</style>
+
+@code {
+    private enum EstadoDado { Idle, Arremessando, Revelado }
+
+    /// <summary>Menor valor possível do dado.</summary>
+    [Parameter] public int MinValor { get; set; } = 1;
+
+    /// <summary>Maior valor possível do dado.</summary>
+    [Parameter] public int MaxValor { get; set; } = 6;
+
+    /// <summary>Números que não podem sair (excluídos do intervalo).</summary>
+    [Parameter] public List<int>? NumerosRestritos { get; set; }
+
+    /// <summary>Se verdadeiro, só valores pares são válidos.</summary>
+    [Parameter] public bool SoPar { get; set; }
+
+    /// <summary>Se verdadeiro, só valores ímpares são válidos.</summary>
+    [Parameter] public bool SoImpar { get; set; }
+
+    /// <summary>Desabilita o botão externamente.</summary>
+    [Parameter] public bool Desabilitado { get; set; }
+
+    /// <summary>Mostra um rodapé com as regras ativas do dado.</summary>
+    [Parameter] public bool MostrarRegras { get; set; } = true;
+
+    [Parameter] public string TextoBotao { get; set; } = "Rolar dado";
+
+    /// <summary>
+    /// Chamado quando o botão é clicado. Deve retornar o valor sorteado
+    /// PELO SERVIDOR. O componente apenas anima até esse valor.
+    /// </summary>
+    [Parameter] public Func<Task<int>>? ObterResultadoServidor { get; set; }
+
+    /// <summary>Disparado após a animação terminar, com o valor revelado.</summary>
+    [Parameter] public EventCallback<int> AoRevelar { get; set; }
+
+    private EstadoDado _estado = EstadoDado.Idle;
+    private int? _valorRevelado;
+    private int _numeroPiscando;
+    private string? _erro;
+    private IJSObjectReference? _audioModule;
+    private CancellationTokenSource? _piscaCts;
+
+    private string _estadoCss => _estado switch
+    {
+        EstadoDado.Arremessando => "arremessando",
+        EstadoDado.Revelado => "revelado",
+        _ => "idle"
+    };
+
+    /// <summary>
+    /// Conjunto de valores válidos conforme as regras.
+    /// Útil também para o servidor validar/sortear de forma consistente.
+    /// </summary>
+    private List<int> ValoresValidos()
+    {
+        var restritos = NumerosRestritos ?? new List<int>();
+        var validos = new List<int>();
+
+        for (int v = MinValor; v <= MaxValor; v++)
+        {
+            if (restritos.Contains(v))
+                continue;
+            if (SoPar && v % 2 != 0)
+                continue;
+            if (SoImpar && v % 2 == 0)
+                continue;
+            validos.Add(v);
+        }
+        return validos;
+    }
+
+    private async Task RolarAsync()
+    {
+        if (_estado == EstadoDado.Arremessando)
+            return;
+
+        _erro = null;
+
+        var validos = ValoresValidos();
+        if (validos.Count == 0)
+        {
+            _erro = "Configuração inválida: nenhum valor possível com essas regras.";
+            StateHasChanged();
+            return;
+        }
+
+        if (ObterResultadoServidor is null)
+        {
+            _erro = "Dado não configurado (faltou ObterResultadoServidor).";
+            StateHasChanged();
+            return;
+        }
+
+        _estado = EstadoDado.Arremessando;
+        _valorRevelado = null;
+        StateHasChanged();
+
+        await TocarSomAsync("chacoalhar");
+
+        // Pisca números aleatórios válidos durante o arremesso
+        _piscaCts = new CancellationTokenSource();
+        var piscaTask = PiscarNumerosAsync(validos, _piscaCts.Token);
+
+        // Busca o resultado real no servidor (paralelo à animação)
+        int resultado;
+        try
+        {
+            resultado = await ObterResultadoServidor.Invoke();
+        }
+        catch (Exception ex)
+        {
+            _piscaCts.Cancel();
+            _estado = EstadoDado.Idle;
+            _erro = ex.Message;
+            StateHasChanged();
+            return;
+        }
+
+        // Garante uma duração mínima de animação mesmo se o servidor responder rápido
+        await Task.Delay(900);
+        _piscaCts.Cancel();
+        try { await piscaTask; } catch { /* cancelamento esperado */ }
+
+        // Revela
+        _valorRevelado = resultado;
+        _estado = EstadoDado.Revelado;
+        await TocarSomAsync("jogar");
+        StateHasChanged();
+
+        await Task.Delay(650);
+
+        if (AoRevelar.HasDelegate)
+            await AoRevelar.InvokeAsync(resultado);
+    }
+
+    private async Task PiscarNumerosAsync(List<int> validos, CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                _numeroPiscando = validos[Random.Shared.Next(validos.Count)];
+                StateHasChanged();
+                await Task.Delay(80, token);
+            }
+        }
+        catch (TaskCanceledException) { /* esperado */ }
+    }
+
+    private async Task TocarSomAsync(string tipo)
+    {
+        try
+        {
+            _audioModule ??= await JS.InvokeAsync<IJSObjectReference>(
+                "import", "./js/dado-som.js");
+            await _audioModule.InvokeVoidAsync("tocar", tipo);
+        }
+        catch
+        {
+            // Áudio é opcional
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _piscaCts?.Cancel();
+        _piscaCts?.Dispose();
+        if (_audioModule is not null)
+        {
+            try { await _audioModule.DisposeAsync(); }
+            catch { /* ignora */ }
+        }
+    }
+}

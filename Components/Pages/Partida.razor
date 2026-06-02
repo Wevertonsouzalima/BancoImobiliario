@@ -1,0 +1,1356 @@
+@page "/jogo/partida/{IdPartida:int}"
+@layout EmptyLayout
+
+@using BancoImobiliario.Components.Componentes
+@using BancoImobiliario.Models.DTOs.Jogo
+@using BancoImobiliario.Models.Jogo
+@using BancoImobiliario.Models.Enums
+@using BancoImobiliario.Services
+@using BancoImobiliario.Services.Jogo
+@using BancoImobiliario.Services.Tabuleiro
+@using BancoImobiliario.Components.Layout
+@using Microsoft.AspNetCore.WebUtilities
+
+@inject PartidaService PartidaService
+@inject TabuleiroService TabuleiroService
+@inject AcaoCasaService AcaoCasaService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Partida - Tabuleiro</PageTitle>
+
+<div class="jogo-page">
+
+    @if (_carregando)
+    {
+        <div class="jogo-loading">
+            <i class="bi bi-hourglass-split"></i>
+            <span>Carregando tabuleiro...</span>
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(_erro))
+    {
+        <div class="jogo-alerta">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span>@_erro</span>
+        </div>
+    }
+    else
+    {
+        @* ===== TABULEIRO ===== *@
+        <div class="tabuleiro-area">
+            <div class="tabuleiro-grade"
+                 style="
+                --cols:@_colunas;
+                --rows:@_linhas;
+                --tamanho-casa:@($"{_tamanhoCasa}px");">
+
+                @foreach (var celula in _celulas)
+                {
+                    var casa = celula.Casa;
+                    var mostrar = casa.IsRevelada || _debug;
+                    <div class="casa @(!casa.IsRevelada && _debug ? "casa-debug" : "")"
+                         style="grid-column:@(celula.Coluna + 1); grid-row:@(celula.Linha + 1);"
+                         title="@(mostrar ? $"{casa.Nome} ({casa.TipoCasaDescricao})" : "Casa não revelada")"
+                         @onclick="() => InspecionarCasaAsync(casa.Posicao)">
+
+                        @if (mostrar && !string.IsNullOrWhiteSpace(casa.Imagem))
+                        {
+                            <div class="casa-imagem"
+                                 style="background-image:url('/imagens/@casa.Imagem');">
+                            </div>
+                        }
+                        else if (mostrar)
+                        {
+                            <div class="casa-imagem casa-sem-imagem">
+                                <i class="bi bi-geo-alt"></i>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="casa-imagem casa-surpresa">
+                                <i class="bi bi-question-lg"></i>
+                            </div>
+                        }
+
+                        @if (mostrar)
+                        {
+                            <span class="casa-numero"
+                                  style="background-color:@CorDaCasa(casa);">
+                                @casa.Posicao
+                            </span>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* ===== PAINEL INFERIOR: faixa 70/30 ===== *@
+        <div class="painel-inferior">
+
+            @* ----- PAINEL ESQUERDO (70%): sessão do jogador ----- *@
+            <div class="painel-sessao">
+
+                <div class="painel-cabecalho">
+                    <div>
+                        <span class="painel-eyebrow">Partida</span>
+                        <h1>@(_lobby?.CodigoSala ?? "")</h1>
+                    </div>
+                    <div class="painel-cabecalho-dir">
+                        @if (_debug)
+                        {
+                            <span class="debug-badge" title="Modo debug ativo: casas reveladas para teste">
+                                <i class="bi bi-bug-fill"></i> DEBUG
+                            </span>
+                        }
+                        <span class="painel-status">@(_lobby?.StatusPartidaDescricao ?? "")</span>
+                    </div>
+                </div>
+
+                @* SIMULAÇÃO (ferramenta de teste) *@
+                <div class="simulacao-box">
+                    <i class="bi bi-bug-fill"></i>
+                    <span class="simulacao-label">Simular queda na casa</span>
+                    <input type="number" min="1" class="simulacao-input"
+                           placeholder="nº" @bind="_casaSimulada" />
+                    <button type="button" class="simulacao-btn" @onclick="ExecutarSimulacaoAsync">
+                        <i class="bi bi-play-fill"></i> Executar
+                    </button>
+                    @if (!string.IsNullOrWhiteSpace(_msgSimulacao))
+                    {
+                        <span class="simulacao-msg">@_msgSimulacao</span>
+                    }
+                </div>
+
+                <div class="painel-tabs">
+                    <button type="button"
+                            class="@(_abaAtiva == "dados" ? "tab ativa" : "tab")"
+                            @onclick="@(() => _abaAtiva = "dados")">
+                        Seus dados
+                    </button>
+                    <button type="button"
+                            class="@(_abaAtiva == "propriedades" ? "tab ativa" : "tab")"
+                            @onclick="@(() => _abaAtiva = "propriedades")">
+                        Propriedades
+                    </button>
+                </div>
+
+                <div class="painel-corpo">
+
+                    @if (_abaAtiva == "dados")
+                    {
+                        <div class="aba-dados">
+
+                            @* sub-painel: dados do jogador *@
+                            <div class="subpainel bloco-dados">
+                                @if (_jogadorAtual is not null)
+                                {
+                                    <div class="dados-cabecalho">
+                                        <div class="dados-avatar" style="@EstiloAvatar(_jogadorAtual)">
+                                            @if (!string.IsNullOrWhiteSpace(_jogadorAtual.UrlAvatar))
+                                            {
+                                                <img src="@_jogadorAtual.UrlAvatar" alt="@_jogadorAtual.NomeJogador" />
+                                            }
+                                            else
+                                            {
+                                                @ObterIniciais(_jogadorAtual.NomeJogador)
+                                            }
+                                        </div>
+                                        <div>
+                                            <strong>@_jogadorAtual.NomeJogador</strong>
+                                            <small>Ordem #@_jogadorAtual.OrdemTurno</small>
+                                        </div>
+                                    </div>
+
+                                    <dl class="dados-lista">
+                                        <dt>Saldo</dt>
+                                        <dd class="saldo">R$ @((_estadoJogador?.SaldoAtual ?? _jogadorAtual.SaldoAtual).ToString("N2"))</dd>
+                                        <dt>Casa atual</dt>
+                                        <dd>@(_estadoJogador?.PosicaoAtual ?? 0)</dd>
+                                        <dt>Rodada</dt>
+                                        <dd>0</dd>
+                                        <dt>Volta</dt>
+                                        <dd>@(_estadoJogador?.VoltasCompletadas ?? 0)</dd>
+                                        <dt>Propriedades</dt>
+                                        <dd>0</dd>
+                                    </dl>
+                                }
+                                else
+                                {
+                                    <p class="dados-vazio">Nenhum jogador identificado.</p>
+                                }
+                            </div>
+
+                            @* sub-painel: efeitos + grupo (só aparece se houver algo a mostrar) *@
+                            @{
+                                var temEfeitos = false; // TODO: ligar à relação jogador↔efeitos quando existir
+                                var temGrupos = _gruposCompletos.Count > 0;
+                            }
+                            @if (temEfeitos || temGrupos)
+                            {
+                                <div class="subpainel bloco-status">
+
+                                    @if (temEfeitos)
+                                    {
+                                        <div class="status-secao">
+                                            <h4>Efeitos</h4>
+                                            <div class="badges">
+                                                @* TODO: renderizar apenas os efeitos que o jogador possui *@
+                                            </div>
+                                        </div>
+                                    }
+
+                                    @if (temGrupos)
+                                    {
+                                        <div class="status-secao">
+                                            <h4>Grupos completos</h4>
+                                            <div class="badges badges-grupo">
+                                                @foreach (var grupoId in _gruposCompletos)
+                                                {
+                                                    var cor = CorDoGrupo(grupoId);
+                                                    <span class="badge badge-grupo">
+                                                        <span class="grupo-cor" style="background-color:@cor;"></span>
+                                                        @grupoId
+                                                    </span>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="subpainel bloco-status vazio-status">
+                                    <i class="bi bi-stars"></i>
+                                    <span>Sem efeitos ativos ou grupos completos ainda.</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="aba-propriedades">
+                            <div class="tabela-wrapper">
+                                <table class="tabela-propriedades">
+                                    <thead>
+                                        <tr>
+                                            <th>Vender</th>
+                                            <th>Cidade</th>
+                                            <th>Casas</th>
+                                            <th>Hoteis</th>
+                                            <th>Grupo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr class="vazio">
+                                            <td colspan="5">Voce ainda nao possui propriedades.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
+
+                </div>
+
+                @* AÇÕES (clean) - visibilidade conforme estado de turno e configuração *@
+                <div class="painel-acoes">
+                    <button type="button" class="acao dado" title="Jogar dado"
+                            disabled="@(!PodeJogarDado)"
+                            @onclick="JogarDadoAsync">
+                        <i class="bi bi-dice-5-fill"></i>
+                    </button>
+
+                    @if (_config?.HabilitarNegociacoes == true)
+                    {
+                        <button type="button" class="acao">Negociação</button>
+                    }
+
+                    @if (_config?.HabilitarApostas == true)
+                    {
+                        <button type="button" class="acao">Apostas</button>
+                    }
+
+                    @if (PodePagar)
+                    {
+                        <button type="button" class="acao alerta" @onclick="PagarAsync">
+                            <i class="bi bi-cash-coin"></i> Pagar
+                        </button>
+                    }
+
+                    <button type="button" class="acao destaque"
+                            disabled="@(!PodeFinalizar)"
+                            @onclick="FinalizarJogadaAsync">
+                        Finalizar jogada
+                    </button>
+
+                    <button type="button" class="acao perigo" @onclick="DesistirAsync">
+                        Desistir
+                    </button>
+                </div>
+
+            </div>
+
+            @* ----- PAINEL DIREITO (30%): dados da casa (fora das abas) ----- *@
+            <aside class="painel-casa">
+                <PainelCasa Dados="_dadosCasa"
+                            PodeComprar="PodeComprarAtual()"
+                            PodeAddCasa="PodeAddCasaAtual()"
+                            PodeAddHotel="PodeAddHotelAtual()"
+                            OnComprar="ComprarAsync"
+                            OnAddCasa="AddCasaAsync"
+                            OnAddHotel="AddHotelAsync"
+                            OnLimpar="LimparCasa" />
+            </aside>
+
+        </div>
+    }
+</div>
+
+<style>
+    .jogo-page {
+        min-height: 100vh;
+        background: linear-gradient(160deg, #0b1120, #050810);
+        color: #e5e7eb;
+        padding: 0;
+        margin: 0;
+    }
+
+    .jogo-loading,
+    .jogo-alerta {
+        display: flex;
+        align-items: center;
+        gap: .65rem;
+        max-width: 480px;
+        margin: 3rem auto;
+        padding: 1rem 1.2rem;
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, .18);
+        background: rgba(15, 23, 42, .7);
+    }
+
+    .jogo-alerta {
+        border-color: rgba(239, 68, 68, .3);
+        background: rgba(239, 68, 68, .12);
+        color: #fca5a5;
+    }
+
+    /* ===== TABULEIRO ===== */
+    .tabuleiro-area {
+        padding: 1rem;
+        overflow-x: auto;
+        overflow-y: hidden;
+        display: flex;
+        justify-content: center;
+    }
+
+    .tabuleiro-grade {
+        display: grid;
+        grid-template-columns: repeat(var(--cols), var(--tamanho-casa));
+        grid-template-rows: repeat(var(--rows), var(--tamanho-casa));
+        gap: 6px;
+    }
+
+    .casa {
+        position: relative;
+        border-radius: 10px;
+        overflow: hidden;
+        background: #0b1225;
+        border: 1px solid rgba(148, 163, 184, .2);
+        box-shadow: 0 4px 12px rgba(0,0,0,.35);
+        transition: transform 140ms ease, box-shadow 140ms ease;
+        min-width: 0;
+        cursor: pointer;
+    }
+
+        .casa:hover {
+            transform: scale(1.06);
+            box-shadow: 0 12px 26px rgba(0,0,0,.55);
+            z-index: 5;
+        }
+
+    .casa-imagem {
+        position: absolute;
+        inset: 0;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+    }
+
+    .casa-sem-imagem {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(145deg, #1e293b, #0f172a);
+        color: #475569;
+        font-size: 1.5rem;
+    }
+
+    /* casa não revelada: caixa misteriosa animada */
+    .casa-surpresa {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background:
+            radial-gradient(circle at 50% 40%, rgba(96,165,250,.28), transparent 62%),
+            linear-gradient(150deg, #1b2540, #0d1426 70%);
+        color: #93c5fd;
+        animation: surpresaGlow 3.2s ease-in-out infinite;
+    }
+
+    /* o "?" flutua de leve, grande e iluminado */
+    .casa-surpresa i {
+        font-size: 2.6rem;
+        font-weight: 900;
+        z-index: 2;
+        color: #bfdbfe;
+        text-shadow: 0 0 12px rgba(96,165,250,.8), 0 0 26px rgba(96,165,250,.45);
+        animation: surpresaFloat 2.6s ease-in-out infinite;
+    }
+
+    /* brilho diagonal que cruza a casa de tempos em tempos */
+    .casa-surpresa::before {
+        content: "";
+        position: absolute;
+        top: -60%;
+        left: -120%;
+        width: 60%;
+        height: 220%;
+        background: linear-gradient(
+            105deg,
+            transparent,
+            rgba(147, 197, 253, .28),
+            transparent);
+        transform: rotate(8deg);
+        animation: surpresaShimmer 3.8s ease-in-out infinite;
+    }
+
+    /* pontos decorativos sutis no fundo */
+    .casa-surpresa::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(rgba(148,163,184,.18) 1px, transparent 1px);
+        background-size: 12px 12px;
+        opacity: .5;
+        z-index: 1;
+    }
+
+    .casa:hover .casa-surpresa {
+        animation-duration: 1.4s;
+    }
+    .casa:hover .casa-surpresa i {
+        animation-duration: 1s;
+        color: #ffffff;
+        transform: scale(1.18);
+        text-shadow: 0 0 16px rgba(147,197,253,.95), 0 0 34px rgba(96,165,250,.6);
+    }
+
+    @@keyframes surpresaGlow {
+        0%, 100% { box-shadow: inset 0 0 18px rgba(59,130,246,.12); }
+        50%      { box-shadow: inset 0 0 30px rgba(59,130,246,.34); }
+    }
+
+    @@keyframes surpresaFloat {
+        0%, 100% { transform: translateY(0) rotate(0deg); }
+        50%      { transform: translateY(-4px) rotate(-6deg); }
+    }
+
+    @@keyframes surpresaShimmer {
+        0%   { left: -120%; }
+        55%  { left: 160%; }
+        100% { left: 160%; }
+    }
+
+    /* casa visível só por causa do modo debug: contorno tracejado de alerta */
+    .casa-debug {
+        outline: 2px dashed rgba(251, 191, 36, .7);
+        outline-offset: -2px;
+    }
+
+    .painel-cabecalho-dir {
+        display: flex;
+        align-items: center;
+        gap: .6rem;
+    }
+
+    .debug-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        padding: .2rem .5rem;
+        border-radius: 7px;
+        background: rgba(251, 191, 36, .18);
+        border: 1px solid rgba(251, 191, 36, .45);
+        color: #fcd34d;
+        font-size: .68rem;
+        font-weight: 800;
+        letter-spacing: .08em;
+    }
+
+    .casa-numero {
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        min-width: 22px;
+        height: 22px;
+        padding: 0 6px;
+        border-radius: 7px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: .8rem;
+        font-weight: 900;
+        color: #0f172a;
+        box-shadow: 0 2px 5px rgba(0,0,0,.5);
+    }
+
+    /* ===== PAINEL INFERIOR: faixa 70/30 ===== */
+    .painel-inferior {
+        position: sticky;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 50;
+        display: flex;
+        gap: 1rem;
+        align-items: stretch;
+        background: linear-gradient(180deg, rgba(15,23,42,.96), rgba(2,6,23,.99));
+        border-top: 1px solid rgba(96, 165, 250, .25);
+        padding: .75rem 1.2rem;
+        box-shadow: 0 -10px 28px rgba(0,0,0,.45);
+    }
+
+    .painel-sessao {
+        flex: 0 0 70%;
+        max-width: 70%;
+        display: flex;
+        flex-direction: column;
+        gap: .65rem;
+        min-width: 0;
+    }
+
+    .painel-casa {
+        flex: 1 1 30%;
+        min-width: 0;
+    }
+
+    .painel-cabecalho {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 1rem;
+    }
+
+        .painel-cabecalho h1 {
+            margin: .1rem 0 0;
+            font-size: 1.2rem;
+            letter-spacing: -.02em;
+        }
+
+    .painel-eyebrow {
+        color: #60a5fa;
+        font-size: .65rem;
+        font-weight: 800;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+    }
+
+    .painel-status {
+        color: #94a3b8;
+        font-size: .8rem;
+        font-weight: 700;
+    }
+
+    /* ===== SIMULAÇÃO ===== */
+    .simulacao-box {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        flex-wrap: wrap;
+        padding: .55rem .7rem;
+        border-radius: 10px;
+        border: 1px dashed rgba(251, 191, 36, .35);
+        background: rgba(251, 191, 36, .06);
+    }
+
+        .simulacao-box > i { color: #fbbf24; }
+
+    .simulacao-label {
+        font-size: .78rem;
+        font-weight: 800;
+        color: #fcd34d;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+    }
+
+    .simulacao-input {
+        width: 90px;
+        padding: .35rem .6rem;
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, .3);
+        background: #0b1120;
+        color: #e5e7eb;
+        font-weight: 700;
+    }
+
+    .simulacao-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        padding: .4rem .8rem;
+        border-radius: 8px;
+        border: none;
+        background: linear-gradient(135deg, #d97706, #f59e0b);
+        color: #1f1300;
+        font-weight: 800;
+        font-size: .82rem;
+        cursor: pointer;
+    }
+
+        .simulacao-btn:hover { filter: brightness(1.08); }
+
+    .simulacao-msg {
+        font-size: .8rem;
+        color: #cbd5e1;
+        margin-left: .25rem;
+    }
+
+    .painel-tabs {
+        display: flex;
+        gap: .25rem;
+        border-bottom: 1px solid rgba(148, 163, 184, .14);
+    }
+
+    .tab {
+        border: 0;
+        background: transparent;
+        color: #94a3b8;
+        padding: .5rem .9rem;
+        font-weight: 800;
+        font-size: .82rem;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        transition: 140ms ease;
+    }
+
+        .tab:hover { color: #e5e7eb; }
+
+        .tab.ativa {
+            color: #60a5fa;
+            border-bottom-color: #60a5fa;
+        }
+
+    .painel-corpo {
+        flex: 1;
+        min-height: 150px;
+    }
+
+    /* dois sub-painéis dentro do painel maior */
+    .aba-dados {
+        display: grid;
+        grid-template-columns: minmax(200px, 280px) 1fr;
+        gap: 1rem;
+        align-items: stretch;
+    }
+
+    .subpainel {
+        background: rgba(15, 23, 42, .45);
+        border: 1px solid rgba(148, 163, 184, .12);
+        border-radius: 12px;
+        padding: .85rem 1rem;
+    }
+
+    .bloco-dados {
+        display: flex;
+        flex-direction: column;
+        gap: .6rem;
+    }
+
+    .dados-cabecalho {
+        display: flex;
+        align-items: center;
+        gap: .55rem;
+    }
+
+    .dados-avatar {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(59, 130, 246, .2);
+        color: #bfdbfe;
+        font-weight: 900;
+        font-size: .9rem;
+        overflow: hidden;
+        border: 2px solid transparent;
+        flex-shrink: 0;
+    }
+
+        .dados-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+    .dados-cabecalho strong {
+        display: block;
+        font-size: .92rem;
+    }
+
+    .dados-cabecalho small {
+        color: #94a3b8;
+        font-size: .76rem;
+    }
+
+    .dados-lista {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: .3rem .8rem;
+        margin: 0;
+        font-size: .85rem;
+    }
+
+        .dados-lista dt { color: #94a3b8; }
+
+        .dados-lista dd {
+            margin: 0;
+            font-weight: 800;
+            color: #e5e7eb;
+            text-align: right;
+        }
+
+            .dados-lista dd.saldo { color: #86efac; }
+
+    .dados-vazio {
+        color: #64748b;
+        font-size: .85rem;
+        margin: 0;
+    }
+
+    .bloco-status {
+        display: flex;
+        flex-direction: column;
+        gap: 1.1rem;   /* respiro vertical entre Efeitos e Grupo */
+        min-width: 0;
+    }
+
+    .status-secao h4 {
+        margin: 0 0 .6rem;  /* respiro entre o título e os badges */
+        font-size: .7rem;
+        color: #94a3b8;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+    }
+
+    /* badges quebram em mais linhas para aproveitar o vertical */
+    .badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .4rem;
+    }
+
+    .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: .3rem .6rem;
+        border-radius: 8px;
+        background: rgba(148, 163, 184, .14);
+        color: #cbd5e1;
+        font-size: .72rem;
+        font-weight: 700;
+        border: 1px solid rgba(148, 163, 184, .18);
+    }
+
+    .badges-grupo {
+        gap: .4rem;
+    }
+
+    .badge-grupo {
+        min-width: 40px;
+        justify-content: center;
+        font-weight: 900;
+        gap: .35rem;
+    }
+
+    .grupo-cor {
+        width: 11px;
+        height: 11px;
+        border-radius: 3px;
+        border: 1px solid rgba(255,255,255,.2);
+        display: inline-block;
+    }
+
+    /* estado vazio do sub-painel (sem efeitos/grupos) */
+    .vazio-status {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: .5rem;
+        color: #64748b;
+        font-size: .82rem;
+        text-align: center;
+    }
+    .vazio-status i { font-size: 1.6rem; }
+
+    .aba-propriedades { max-height: 220px; }
+
+    .tabela-wrapper {
+        overflow: auto;
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, .12);
+        background: rgba(15, 23, 42, .5);
+        max-height: 220px;
+    }
+
+    .tabela-propriedades {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: .82rem;
+    }
+
+        .tabela-propriedades th {
+            text-align: left;
+            padding: .5rem .7rem;
+            background: rgba(15, 23, 42, .85);
+            color: #94a3b8;
+            font-weight: 800;
+            font-size: .7rem;
+            text-transform: uppercase;
+            border-bottom: 1px solid rgba(148, 163, 184, .14);
+            position: sticky;
+            top: 0;
+        }
+
+        .tabela-propriedades td {
+            padding: .5rem .7rem;
+            border-bottom: 1px solid rgba(148, 163, 184, .08);
+        }
+
+        .tabela-propriedades tr.vazio td {
+            text-align: center;
+            color: #64748b;
+            padding: 1.5rem .7rem;
+        }
+
+    /* ===== AÇÕES (clean) ===== */
+    .painel-acoes {
+        display: flex;
+        gap: .5rem;
+        align-items: center;
+        padding-top: .6rem;
+        border-top: 1px solid rgba(148, 163, 184, .12);
+    }
+
+    .acao {
+        flex: 1;
+        min-height: 40px;
+        border: 1px solid rgba(148, 163, 184, .2);
+        border-radius: 9px;
+        background: rgba(148, 163, 184, .1);
+        color: #e5e7eb;
+        font-weight: 700;
+        font-size: .85rem;
+        cursor: pointer;
+        transition: 140ms ease;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: .35rem;
+    }
+
+        .acao:hover {
+            background: rgba(148, 163, 184, .2);
+            transform: translateY(-1px);
+        }
+
+        /* dado: botão quadrado só com ícone */
+        .acao.dado {
+            flex: 0 0 48px;
+            width: 48px;
+            min-width: 48px;
+            font-size: 1.3rem;
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            border-color: transparent;
+            color: white;
+        }
+
+        .acao.destaque {
+            background: linear-gradient(135deg, #16a34a, #22c55e);
+            border-color: transparent;
+            color: white;
+        }
+
+        .acao.perigo {
+            background: rgba(239, 68, 68, .15);
+            border-color: rgba(239, 68, 68, .3);
+            color: #fca5a5;
+        }
+
+        .acao.alerta {
+            background: linear-gradient(135deg, #d97706, #f59e0b);
+            border-color: transparent;
+            color: #1f1300;
+        }
+
+        .acao:disabled {
+            opacity: .45;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .acao:disabled:hover {
+            background: rgba(148, 163, 184, .1);
+            transform: none;
+        }
+        .acao.dado:disabled:hover {
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+        }
+        .acao.destaque:disabled:hover {
+            background: linear-gradient(135deg, #16a34a, #22c55e);
+        }
+
+    @@media (max-width: 1100px) {
+        .painel-inferior { flex-direction: column; }
+        .painel-sessao { flex: 1 1 auto; max-width: 100%; }
+        .painel-casa { flex: 1 1 auto; }
+        .aba-dados { grid-template-columns: 1fr; }
+    }
+</style>
+
+@code {
+    [Parameter]
+    public int IdPartida { get; set; }
+
+    private bool _carregando = true;
+    private string? _erro;
+
+    private LobbyPartidaDTO? _lobby;
+    private LobbyJogadorDTO? _jogadorAtual;
+    private Tb_PartidaJogador? _estadoJogador;
+    private List<TabuleiroCasaDTO> _casas = new();
+
+    private List<CelulaTabuleiro> _celulas = new();
+
+    private readonly Dictionary<int, (int Linha, int Coluna)> _posicaoLayout = new();
+
+    private string _abaAtiva = "dados";
+
+    private const string CorNeutra = "#94a3b8";
+
+    private int _colunas = 10;
+    private int _linhas = 10;
+    private int _tamanhoCasa = 80;
+
+    private int? _casaSimulada;
+    private string? _msgSimulacao;
+    private DadosCasaPopup? _dadosCasa;
+
+    // Modo debug: ativado por ?debug=true (ou ?debug) na URL. Mostra pistas (número/cor)
+    // de casas não reveladas para facilitar o desenvolvimento. Fora dele, jogo real.
+    private bool _debug;
+
+    // Configuração da partida (regras: negociações, apostas, limites de construção...)
+    private BancoImobiliario.Models.Configuracao? _config;
+
+    // GrupoIds que o jogador da vez possui por completo (todas as casas do grupo)
+    private HashSet<int> _gruposCompletos = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        DetectarDebug();
+
+        try
+        {
+            _lobby = await PartidaService.ObterLobbyAsync(IdPartida);
+            _casas = await PartidaService.ObterTabuleiroPartidaAsync(IdPartida);
+
+            if (_casas.Count == 0)
+            {
+                _erro = "O tabuleiro desta partida ainda nao foi gerado.";
+                return;
+            }
+
+            var configDaPartida = await PartidaService.ObterConfiguracaoAsync(IdPartida);
+
+            if (configDaPartida == null)
+            {
+                _erro = "Configuração da partida não encontrada.";
+                return;
+            }
+
+            _config = configDaPartida;
+
+            var tabuleiroDb = await TabuleiroService.ObterTabuleiroPorIdAsync(configDaPartida.IdTabuleiro);
+            if (tabuleiroDb == null)
+            {
+                _erro = "Dados estruturais do tabuleiro não encontrados.";
+                return;
+            }
+
+            _colunas = tabuleiroDb.LarguraGrade;
+            _linhas = tabuleiroDb.AlturaGrade;
+            _tamanhoCasa = tabuleiroDb.TamanhoCasaPx;
+
+            var layoutDoBanco = await TabuleiroService.ObterLayoutPorTabuleiroIdAsync(configDaPartida.IdTabuleiro);
+
+            _posicaoLayout.Clear();
+            foreach (var l in layoutDoBanco)
+                _posicaoLayout[l.Posicao] = (l.Linha, l.Coluna);
+
+            _jogadorAtual = _lobby?.Jogadores
+                .Where(j => j.TipoJogador == (int)TipoJogadorPartida.Humano)
+                .OrderBy(j => j.OrdemTurno ?? 99)
+                .FirstOrDefault();
+
+            if (_jogadorAtual is not null)
+                _estadoJogador = await AcaoCasaService.ObterJogadorAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+
+            RecalcularGruposCompletos();
+            RemapearCelulas();
+        }
+        catch (Exception ex)
+        {
+            _erro = ex.InnerException?.Message ?? ex.Message;
+        }
+        finally
+        {
+            _carregando = false;
+        }
+    }
+
+    // Lê ?debug=... da URL. Aceita "?debug", "?debug=true", "?debug=1".
+    private void DetectarDebug()
+    {
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        var query = QueryHelpers.ParseQuery(uri.Query);
+
+        if (!query.TryGetValue("debug", out var valor))
+        {
+            _debug = false;
+            return;
+        }
+
+        var v = valor.ToString();
+        // "?debug" sem valor, "?debug=true" ou "?debug=1" ligam o modo.
+        _debug = string.IsNullOrEmpty(v)
+                 || v.Equals("true", StringComparison.OrdinalIgnoreCase)
+                 || v == "1";
+    }
+
+    private void RemapearCelulas()
+    {
+        _celulas = new List<CelulaTabuleiro>();
+
+        foreach (var casa in _casas)
+        {
+            var pos = _posicaoLayout.TryGetValue(casa.Posicao, out var p) ? p : (Linha: 0, Coluna: 0);
+
+            _celulas.Add(new CelulaTabuleiro
+            {
+                Casa = casa,
+                Coluna = pos.Coluna,
+                Linha = pos.Linha
+            });
+        }
+    }
+
+    private async Task RecarregarAsync()
+    {
+        _casas = await PartidaService.ObterTabuleiroPartidaAsync(IdPartida);
+        _lobby = await PartidaService.ObterLobbyAsync(IdPartida);
+
+        _jogadorAtual = _lobby?.Jogadores
+            .Where(j => j.TipoJogador == (int)TipoJogadorPartida.Humano)
+            .OrderBy(j => j.OrdemTurno ?? 99)
+            .FirstOrDefault();
+
+        if (_jogadorAtual is not null)
+            _estadoJogador = await AcaoCasaService.ObterJogadorAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+
+        RecalcularGruposCompletos();
+        RemapearCelulas();
+    }
+
+    // Um grupo está "completo" quando o jogador da vez possui TODAS as casas daquele GrupoId.
+    private void RecalcularGruposCompletos()
+    {
+        _gruposCompletos = new HashSet<int>();
+
+        if (_jogadorAtual is null)
+            return;
+
+        var meuId = _jogadorAtual.IdPartidaJogador;
+
+        var porGrupo = _casas
+            .Where(c => c.GrupoId is not null)
+            .GroupBy(c => c.GrupoId!.Value);
+
+        foreach (var grupo in porGrupo)
+        {
+            var total = grupo.Count();
+            var meus = grupo.Count(c => c.ProprietarioId == meuId);
+
+            if (total > 0 && meus == total)
+                _gruposCompletos.Add(grupo.Key);
+        }
+    }
+
+    private async Task ExecutarSimulacaoAsync()
+    {
+        _msgSimulacao = null;
+
+        if (_jogadorAtual is null)
+        {
+            _msgSimulacao = "Nenhum jogador identificado.";
+            return;
+        }
+
+        if (_casaSimulada is null)
+        {
+            _msgSimulacao = "Informe o número da casa.";
+            return;
+        }
+
+        var posicao = _casaSimulada.Value;
+
+        if (_casas.All(c => c.Posicao != posicao))
+        {
+            _msgSimulacao = $"A casa {posicao} não existe neste tabuleiro.";
+            return;
+        }
+
+        try
+        {
+            await AcaoCasaService.DefinirPosicaoAsync(IdPartida, _jogadorAtual.IdPartidaJogador, posicao);
+
+            var resultado = await AcaoCasaService.AoCairNaCasaAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+            _msgSimulacao = resultado.Mensagem;
+            _ultimaAcaoCasa = resultado.Acao;
+
+            // Define o estado de turno conforme o resultado:
+            // ação que exige resolução (pagar) -> ResolvendoCasa; caso contrário, já pode finalizar.
+            var exigeResolucao = resultado.Acao is TipoAcaoCasa.PagouAluguel or TipoAcaoCasa.PagouImposto;
+            await AcaoCasaService.DefinirEstadoTurnoAsync(
+                IdPartida, _jogadorAtual.IdPartidaJogador,
+                exigeResolucao
+                    ? BancoImobiliario.Models.Enums.EstadoTurnoJogador.ResolvendoCasa
+                    : BancoImobiliario.Models.Enums.EstadoTurnoJogador.TurnoConcluido);
+
+            _dadosCasa = await AcaoCasaService.MontarDadosCasaAsync(IdPartida, posicao, _jogadorAtual.IdPartidaJogador, _debug);
+
+            await RecarregarAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
+    }
+
+    private async Task InspecionarCasaAsync(int posicao)
+    {
+        if (_jogadorAtual is null)
+            return;
+
+        try
+        {
+            _dadosCasa = await AcaoCasaService.MontarDadosCasaAsync(IdPartida, posicao, _jogadorAtual.IdPartidaJogador, _debug);
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
+    }
+
+    private void LimparCasa()
+    {
+        _dadosCasa = null;
+    }
+
+    private async Task ComprarAsync()
+    {
+        if (_jogadorAtual is null || _dadosCasa is null)
+            return;
+
+        try
+        {
+            await AcaoCasaService.ComprarPropriedadeAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+
+            _dadosCasa = await AcaoCasaService.MontarDadosCasaAsync(IdPartida, _dadosCasa.Posicao, _jogadorAtual.IdPartidaJogador, _debug);
+            await RecarregarAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
+    }
+
+    // ========================================
+    // VISIBILIDADE / ESTADO DE TURNO
+    // ========================================
+
+    private BancoImobiliario.Models.Enums.EstadoTurnoJogador EstadoAtual
+        => (BancoImobiliario.Models.Enums.EstadoTurnoJogador)(_estadoJogador?.EstadoTurno ?? 0);
+
+    private bool PodeJogarDado
+        => EstadoAtual == BancoImobiliario.Models.Enums.EstadoTurnoJogador.AguardandoDado;
+
+    // Pagar: há uma ação pendente de pagamento na casa atual (aluguel de outro dono).
+    // Impostos/efeitos entram aqui quando esses tipos forem implementados.
+    private bool PodePagar
+    {
+        get
+        {
+            if (EstadoAtual != BancoImobiliario.Models.Enums.EstadoTurnoJogador.ResolvendoCasa)
+                return false;
+
+            return _ultimaAcaoCasa == TipoAcaoCasa.PagouAluguel
+                || _ultimaAcaoCasa == TipoAcaoCasa.PagouImposto;
+        }
+    }
+
+    // Finalizar: bool independente na entidade (será ligado aos efeitos depois).
+    private bool PodeFinalizar => _estadoJogador?.PodeFinalizar ?? false;
+
+    // Guarda o tipo da última ação resultante de cair na casa (para visibilidade do Pagar).
+    private TipoAcaoCasa? _ultimaAcaoCasa;
+
+    // ========================================
+    // HANDLERS DE TURNO (lógica real virá com o motor de turno)
+    // ========================================
+
+    // TODO: rolar dado de verdade (faixa ValMinDado/ValMaxDado), mover o peão,
+    // resolver volta/bônus e então cair na casa. Por ora apenas avança o estado.
+    private async Task JogarDadoAsync()
+    {
+        if (_estadoJogador is null) return;
+
+        await AcaoCasaService.DefinirEstadoTurnoAsync(
+            IdPartida, _estadoJogador.IdPartidaJogador,
+            BancoImobiliario.Models.Enums.EstadoTurnoJogador.ResolvendoCasa);
+
+        _msgSimulacao = "Dado jogado (simulação). Resolva a ação da casa.";
+        await RecarregarAsync();
+    }
+
+    private async Task PagarAsync()
+    {
+        if (_estadoJogador is null) return;
+
+        // O débito do aluguel já ocorre em AoCairNaCasa; aqui apenas conclui a ação pendente.
+        await AcaoCasaService.ConcluirAcaoCasaAsync(IdPartida, _estadoJogador.IdPartidaJogador);
+
+        _ultimaAcaoCasa = null;
+        _msgSimulacao = "Pagamento concluído.";
+        await RecarregarAsync();
+    }
+
+    private async Task FinalizarJogadaAsync()
+    {
+        if (_estadoJogador is null || !PodeFinalizar) return;
+
+        await AcaoCasaService.DefinirEstadoTurnoAsync(
+            IdPartida, _estadoJogador.IdPartidaJogador,
+            BancoImobiliario.Models.Enums.EstadoTurnoJogador.AguardandoVez);
+
+        _ultimaAcaoCasa = null;
+        _msgSimulacao = "Jogada finalizada.";
+        await RecarregarAsync();
+    }
+
+    // TODO: implementar desistência (marca status, libera propriedades etc.).
+    private Task DesistirAsync()
+    {
+        _msgSimulacao = "Desistir: a implementar.";
+        return Task.CompletedTask;
+    }
+
+    // TODO: implementar construção de casa/hotel (debita custo, incrementa QtdCasas/QtdHoteis).
+    private Task AddCasaAsync()
+    {
+        _msgSimulacao = "Construção de casa: a implementar.";
+        return Task.CompletedTask;
+    }
+
+    private Task AddHotelAsync()
+    {
+        _msgSimulacao = "Construção de hotel: a implementar.";
+        return Task.CompletedTask;
+    }
+
+    private bool PodeComprarAtual()
+    {
+        if (_dadosCasa is null || _jogadorAtual is null)
+            return false;
+
+        var saldo = _estadoJogador?.SaldoAtual ?? _jogadorAtual.SaldoAtual;
+        var preco = _dadosCasa.ValorCompra ?? 0m;
+        return saldo >= preco;
+    }
+
+    // Add. Casa: é dono e ainda não atingiu o máximo de casas por propriedade.
+    private bool PodeAddCasaAtual()
+    {
+        if (_dadosCasa is null || _config is null || !_dadosCasa.EhDonoJogadorDaVez)
+            return false;
+
+        return _dadosCasa.QtdCasas < _config.QtdMaxCasas;
+    }
+
+    // Add. Hotel: é dono, tem casas suficientes (>= MinCasasParaHotel) e não atingiu o máximo de hotéis.
+    private bool PodeAddHotelAtual()
+    {
+        if (_dadosCasa is null || _config is null || !_dadosCasa.EhDonoJogadorDaVez)
+            return false;
+
+        return _dadosCasa.QtdCasas >= _config.MinCasasParaHotel
+            && _dadosCasa.QtdHoteis < _config.QtdMaxHoteis;
+    }
+
+    private static string CorDaCasa(TabuleiroCasaDTO casa)
+    {
+        return string.IsNullOrWhiteSpace(casa.CorHexadecimal)
+            ? CorNeutra
+            : casa.CorHexadecimal;
+    }
+
+    // Cor de um grupo: usa a cor de qualquer casa daquele GrupoId (todas compartilham a cor).
+    private string CorDoGrupo(int grupoId)
+    {
+        var casa = _casas.FirstOrDefault(c => c.GrupoId == grupoId);
+        return string.IsNullOrWhiteSpace(casa?.CorHexadecimal) ? CorNeutra : casa!.CorHexadecimal;
+    }
+
+    private static string EstiloAvatar(LobbyJogadorDTO jogador)
+    {
+        return string.IsNullOrWhiteSpace(jogador.CorHex)
+            ? string.Empty
+            : $"border-color:{jogador.CorHex};";
+    }
+
+    private static string ObterIniciais(string? nome)
+    {
+        if (string.IsNullOrWhiteSpace(nome))
+            return "?";
+
+        var partes = nome.Split(' ',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (partes.Length == 1)
+            return partes[0][0].ToString().ToUpperInvariant();
+
+        return $"{partes[0][0]}{partes[^1][0]}".ToUpperInvariant();
+    }
+
+    private sealed class CelulaTabuleiro
+    {
+        public TabuleiroCasaDTO Casa { get; set; } = default!;
+        public int Coluna { get; set; }
+        public int Linha { get; set; }
+    }
+}

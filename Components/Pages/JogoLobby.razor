@@ -1,0 +1,1850 @@
+﻿@page "/jogo/lobby/{IdPartida:int}"
+
+@using BancoImobiliario.Components.Componentes
+@using BancoImobiliario.Models.DTOs.Jogo
+@using BancoImobiliario.Models.Enums
+@using BancoImobiliario.Services
+@using BancoImobiliario.Services.Jogador
+
+@using Microsoft.AspNetCore.Components.Forms
+
+@inject PartidaService PartidaService
+@inject BrowserIdentificacaoService BrowserIdentificacaoService
+@inject AvatarService AvatarService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Lobby da Partida</PageTitle>
+
+<div class="lobby-page">
+
+    @if (_carregando)
+    {
+        <div class="lobby-loading">
+            <i class="bi bi-hourglass-split"></i>
+            <span>Carregando lobby...</span>
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(_erro))
+    {
+        <div class="lobby-alert error">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span>@_erro</span>
+        </div>
+    }
+    else if (_lobby == null)
+    {
+        <div class="lobby-alert error">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span>Lobby nao encontrado.</span>
+        </div>
+    }
+    else
+    {
+        <section class="lobby-hero">
+            <div>
+                <span class="lobby-eyebrow">Aguardando jogadores</span>
+                <h1>Lobby da Partida</h1>
+                <p>Defina jogadores, bots e a ordem de turno antes de iniciar a partida.</p>
+            </div>
+
+            <div class="lobby-code-card">
+                <span>Codigo da sala</span>
+                <strong>@_lobby.CodigoSala</strong>
+                <button type="button" @onclick="CopiarCodigoAsync">
+                    <i class="bi bi-copy"></i>
+                    Copiar
+                </button>
+            </div>
+        </section>
+
+        @if (!string.IsNullOrWhiteSpace(_mensagem))
+        {
+            <div class="lobby-alert success">
+                <i class="bi bi-check-circle"></i>
+                <span>@_mensagem</span>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(_erroAcao))
+        {
+            <div class="lobby-alert error">
+                <i class="bi bi-exclamation-triangle"></i>
+                <span>@_erroAcao</span>
+            </div>
+        }
+
+        <section class="lobby-shell">
+
+            <div class="lobby-status-bar">
+                <div class="status-item">
+                    <span>Status</span>
+                    <strong>@_lobby.StatusPartidaDescricao</strong>
+                </div>
+
+                <div class="status-item">
+                    <span>Tipo</span>
+                    <strong>@_lobby.TipoJogoDescricao</strong>
+                </div>
+
+                <div class="status-item">
+                    <span>Jogadores</span>
+                    <strong>@_lobby.QtdJogadoresAtivos / @_lobby.QtdMaxJogadores</strong>
+                </div>
+
+                <div class="status-item">
+                    <span>Host</span>
+                    <strong>@(_lobby.HostNome ?? "-")</strong>
+                </div>
+            </div>
+
+            <div class="lobby-grid">
+
+                <section class="lobby-card players-card">
+                    <div class="card-header">
+                        <div>
+                            <h2>Jogadores</h2>
+                            <p>Participantes humanos e bots da sala.</p>
+                        </div>
+
+                        @if (_lobby.UsuarioAtualEhHost)
+                        {
+                            <span class="host-pill">Voce e o host</span>
+                        }
+                    </div>
+
+                    @if (!_lobby.UsuarioAtualEstaNaSala)
+                    {
+                        <div class="lobby-alert warning compact">
+                            <i class="bi bi-person-exclamation"></i>
+                            <span>Este navegador ainda nao esta identificado como jogador desta sala.</span>
+                        </div>
+                    }
+
+                    <div class="player-list">
+                        @foreach (var jogador in _lobby.Jogadores)
+                        {
+                            <article class="@ClasseJogador(jogador)">
+                                <div class="player-avatar" style="@EstiloAvatar(jogador)">
+                                    @if (!string.IsNullOrWhiteSpace(jogador.UrlAvatar))
+                                    {
+                                        <img src="@jogador.UrlAvatar" alt="@jogador.NomeJogador" />
+                                    }
+                                    else
+                                    {
+                                        @ObterIniciais(jogador.NomeJogador)
+                                    }
+                                </div>
+
+                                <div class="player-main">
+                                    <div class="player-title">
+                                        <strong>@jogador.NomeJogador</strong>
+
+                                        @if (jogador.EhHost)
+                                        {
+                                            <span class="mini-pill host">Host</span>
+                                        }
+
+                                        @if (jogador.EhBot)
+                                        {
+                                            <span class="mini-pill bot">Bot</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="mini-pill human">Humano</span>
+                                        }
+                                    </div>
+
+                                    <div class="player-meta">
+                                        <span>@jogador.StatusJogadorDescricao</span>
+
+                                        @if (!string.IsNullOrWhiteSpace(jogador.NomePerfilBot))
+                                        {
+                                            <span>- @jogador.NomePerfilBot</span>
+                                        }
+
+                                        @if (!string.IsNullOrWhiteSpace(jogador.DificuldadeBotDescricao))
+                                        {
+                                            <span>- @jogador.DificuldadeBotDescricao</span>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="player-order">
+                                    @if (jogador.OrdemTurno.HasValue)
+                                    {
+                                        <span class="order-number">#@jogador.OrdemTurno</span>
+                                    }
+                                    else if (jogador.ParticipaDesempateOrdem)
+                                    {
+                                        <span class="order-pending">Rolar</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="order-muted">-</span>
+                                    }
+
+                                    @if (jogador.UltimoResultadoOrdem.HasValue)
+                                    {
+                                        <small>Dado: @jogador.UltimoResultadoOrdem</small>
+                                    }
+                                </div>
+
+                                <div class="player-actions">
+                                    @if (jogador.PodeRolarDadoOrdem
+                                        && _lobby.UsuarioAtualIdPartidaJogador == jogador.IdPartidaJogador
+                                        && _lobby.TipoJogo != (int)TipoJogoConfiguracao.LocalMultiplayer)
+                                    {
+                                        <button type="button"
+                                                class="small-action primary"
+                                                @onclick="() => AbrirDadoAsync(jogador.IdPartidaJogador)"
+                                                disabled="@(_processando)">
+                                            <i class="bi bi-dice-5"></i>
+                                            Rolar dado
+                                        </button>
+                                    }
+
+                                    @if (_lobby.UsuarioAtualEhHost && !jogador.EhHost && !jogador.EhBot
+                                         && _lobby.TipoJogo == (int)TipoJogoConfiguracao.LocalMultiplayer
+                                         && _lobby.IdStatusPartida == (int)StatusPartida.Lobby)
+                                    {
+                                        <button type="button"
+                                                class="small-action neutro"
+                                                @onclick="() => AbrirModalEditarJogador(jogador)"
+                                                disabled="@(_processando)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                    }
+
+                                    @if (_lobby.UsuarioAtualEhHost && !jogador.EhHost && _lobby.IdStatusPartida == (int)StatusPartida.Lobby)
+                                    {
+                                        <button type="button"
+                                                class="small-action danger"
+                                                @onclick="() => RemoverJogadorAsync(jogador.IdPartidaJogador)"
+                                                disabled="@(_processando)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    }
+                                </div>
+                            </article>
+                        }
+                    </div>
+                </section>
+
+                <aside class="lobby-side">
+
+                    <section class="lobby-card">
+                        <div class="card-header">
+                            <div>
+                                <h2>Seu jogador</h2>
+                                <p>Nome usado para identificar voce na partida.</p>
+                            </div>
+                        </div>
+
+                        <div class="field">
+                            <label>Nome</label>
+                            <input class="lobby-input"
+                                   @bind="_nomeJogador"
+                                   @bind:event="oninput"
+                                   maxlength="120"
+                                   placeholder="Informe seu nome" />
+                        </div>
+
+                        <button type="button"
+                                class="lobby-button secondary full"
+                                @onclick="SalvarNomeAsync"
+                                disabled="@(_processando || !_lobby.UsuarioAtualEstaNaSala)">
+                            <i class="bi bi-save"></i>
+                            Salvar nome
+                        </button>
+                    </section>
+
+                    <section class="lobby-card">
+                        <div class="card-header">
+                            <div>
+                                <h2>Aparencia</h2>
+                                <p>Escolha uma cor e uma foto para se destacar no tabuleiro.</p>
+                            </div>
+                        </div>
+
+                        <div class="aparencia-preview">
+                            <div class="aparencia-avatar" style="@EstiloAvatarPreview()">
+                                @if (!string.IsNullOrWhiteSpace(_avatarAtual))
+                                {
+                                    <img src="@_avatarAtual" alt="Avatar" />
+                                }
+                                else
+                                {
+                                    @ObterIniciais(_nomeJogador)
+                                }
+                            </div>
+                            <div class="aparencia-info">
+                                <strong>@(_nomeJogador is { Length: > 0 } ? _nomeJogador : "Seu avatar")</strong>
+                                <small>@(string.IsNullOrWhiteSpace(_corAtual) ? "Sem cor definida" : _corAtual)</small>
+                            </div>
+                        </div>
+
+                        <button type="button"
+                                class="lobby-button secondary full"
+                                @onclick="AbrirModalAparencia"
+                                disabled="@(_processando || !_lobby.UsuarioAtualEstaNaSala)">
+                            <i class="bi bi-palette"></i>
+                            Personalizar aparencia
+                        </button>
+                    </section>
+
+                    @if (_lobby.UsuarioAtualEhHost && _lobby.TipoJogo == (int)TipoJogoConfiguracao.LocalMultiplayer)
+                    {
+                        <section class="lobby-card">
+                            <div class="card-header">
+                                <div>
+                                    <h2>Jogadores locais</h2>
+                                    <p>Inclua outros jogadores humanos neste dispositivo.</p>
+                                </div>
+                            </div>
+
+                            <button type="button"
+                                    class="lobby-button secondary full"
+                                    @onclick="AbrirModalAdicionarJogador"
+                                    disabled="@(_processando || !_lobby.PodeAdicionarJogadorOuBot)">
+                                <i class="bi bi-person-plus"></i>
+                                Adicionar jogador
+                            </button>
+                        </section>
+                    }
+
+                    @if (_lobby.UsuarioAtualEhHost)
+                    {
+                        <section class="lobby-card">
+                            <div class="card-header">
+                                <div>
+                                    <h2>Adicionar bot</h2>
+                                    <p>Complete a sala com jogadores automaticos.</p>
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label>Perfil do bot</label>
+                                <select class="lobby-input" @bind="_idPerfilBotSelecionado">
+                                    @foreach (var perfil in _perfisBot)
+                                    {
+                                        <option value="@perfil.IdPerfilBot">@perfil.Nome - @perfil.DificuldadePadraoDescricao</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div class="field">
+                                <label>Nome opcional</label>
+                                <input class="lobby-input"
+                                       @bind="_nomeBot"
+                                       @bind:event="oninput"
+                                       maxlength="120"
+                                       placeholder="Ex: Bot Azul" />
+                            </div>
+
+                            <button type="button"
+                                    class="lobby-button secondary full"
+                                    @onclick="AdicionarBotAsync"
+                                    disabled="@(_processando || !_lobby.PodeAdicionarJogadorOuBot || _perfisBot.Count == 0)">
+                                <i class="bi bi-robot"></i>
+                                Adicionar bot
+                            </button>
+                        </section>
+                    }
+
+                    <section class="lobby-card">
+                        <div class="card-header">
+                            <div>
+                                <h2>Definicao da ordem</h2>
+                                <p>Maior resultado no dado joga primeiro. Empates rolam novamente.</p>
+                            </div>
+                        </div>
+
+                        @if (_lobby.IdStatusPartida == (int)StatusPartida.Lobby)
+                        {
+                            <p class="help-text">
+                                O host deve iniciar a definicao da ordem quando todos os jogadores estiverem na sala.
+                            </p>
+                        }
+                        else if (_lobby.IdStatusPartida == (int)StatusPartida.DefinindoOrdem)
+                        {
+                            <p class="help-text">
+                                Jogadores humanos envolvidos devem clicar em <strong>Rolar dado</strong>. Bots rolam automaticamente.
+                            </p>
+                        }
+                        else if (_lobby.IdStatusPartida == (int)StatusPartida.OrdemDefinida)
+                        {
+                            <p class="help-text success-text">
+                                Ordem definida. O host ja pode iniciar a partida.
+                            </p>
+                        }
+
+                        @if (_lobby.UsuarioAtualEhHost)
+                        {
+                            <div class="host-actions">
+                                <button type="button"
+                                        class="lobby-button secondary full"
+                                        @onclick="IniciarDefinicaoOrdemAsync"
+                                        disabled="@(_processando || !_lobby.PodeIniciarDefinicaoOrdem)">
+                                    <i class="bi bi-dice-6"></i>
+                                    Definir ordem
+                                </button>
+
+                                @* Local Multiplayer: o host conduz a fila de rolagem de todos os humanos locais. *@
+                                @if (_lobby.TipoJogo == (int)TipoJogoConfiguracao.LocalMultiplayer
+                                     && _lobby.IdStatusPartida == (int)StatusPartida.DefinindoOrdem
+                                     && ExistemHumanosPendentes())
+                                {
+                                    <button type="button"
+                                            class="lobby-button secondary full"
+                                            @onclick="IniciarFilaRolagemAsync"
+                                            disabled="@(_processando)">
+                                        <i class="bi bi-dice-5"></i>
+                                        Rolar ordem (@QtdHumanosPendentes jogador@(QtdHumanosPendentes == 1 ? "" : "es"))
+                                    </button>
+                                }
+
+                                <button type="button"
+                                        class="lobby-button primary full"
+                                        @onclick="IniciarPartidaAsync"
+                                        disabled="@(_processando || !_lobby.PodeIniciarPartida)">
+                                    <i class="bi bi-play-fill"></i>
+                                    Iniciar partida
+                                </button>
+                            </div>
+                        }
+                    </section>
+
+                </aside>
+            </div>
+        </section>
+
+        @* Modal de dado. Min/Max vem da configuracao real da partida. *@
+        <DadoModal @ref="_dadoModal"
+                   TituloModal="@_tituloDado"
+                   MinValor="_lobby.ValMinDado"
+                   MaxValor="_lobby.ValMaxDado"
+                   NumerosRestritos="_numerosRestritos"
+                   ObterResultadoServidor="RolarNoServidorAsync"
+                   AoConfirmar="OnDadoConfirmado" />
+
+        @* Modal de personalizacao de aparencia (cor + upload de foto) *@
+        @if (_modalAparenciaAberto)
+        {
+            <div class="aparencia-overlay" @onclick="FecharModalAparencia">
+                <div class="aparencia-modal" @onclick:stopPropagation="true">
+
+                    <header class="aparencia-modal-header">
+                        <h3>Personalizar aparencia</h3>
+                        <button type="button" class="aparencia-fechar" @onclick="FecharModalAparencia">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </header>
+
+                    <div class="aparencia-modal-body">
+
+                        <div class="aparencia-preview grande">
+                            <div class="aparencia-avatar" style="@EstiloAvatarModal()">
+                                @if (!string.IsNullOrWhiteSpace(_avatarPreviewModal))
+                                {
+                                    <img src="@_avatarPreviewModal" alt="Avatar" />
+                                }
+                                else
+                                {
+                                    @ObterIniciais(_nomeJogador)
+                                }
+                            </div>
+                        </div>
+
+                        <div class="aparencia-section">
+                            <label>Cor do jogador</label>
+                            <div class="cor-grid">
+                                @foreach (var cor in _coresDisponiveis)
+                                {
+                                    var corLocal = cor;
+                                    <button type="button"
+                                            class="@(_corModal == corLocal ? "cor-chip ativo" : "cor-chip")"
+                                            style="background-color:@corLocal"
+                                            @onclick="() => _corModal = corLocal">
+                                        @if (_corModal == corLocal)
+                                        {
+                                            <i class="bi bi-check-lg"></i>
+                                        }
+                                    </button>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="aparencia-section">
+                            <label>Foto do jogador</label>
+
+                            <div class="field">
+                                <input class="lobby-input"
+                                       @bind="_nomeImagem"
+                                       @bind:event="oninput"
+                                       maxlength="60"
+                                       placeholder="Nome para a imagem (ex: meu-avatar)" />
+                            </div>
+
+                            <label class="upload-zone">
+                                <InputFile OnChange="OnArquivoSelecionado" accept="image/*" />
+                                <i class="bi bi-cloud-arrow-up"></i>
+                                <span>
+                                    @(_arquivoSelecionado is null
+                                        ? "Clique para escolher uma imagem"
+                                        : _arquivoSelecionado.Name)
+                                </span>
+                                <small>JPG, PNG, WEBP ou GIF - ate 5 MB</small>
+                            </label>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(_erroModal))
+                        {
+                            <div class="lobby-alert error compact">
+                                <i class="bi bi-exclamation-triangle"></i>
+                                <span>@_erroModal</span>
+                            </div>
+                        }
+
+                    </div>
+
+                    <footer class="aparencia-modal-footer">
+                        <button type="button"
+                                class="lobby-button secondary"
+                                @onclick="FecharModalAparencia"
+                                disabled="@(_salvandoAparencia)">
+                            Cancelar
+                        </button>
+                        <button type="button"
+                                class="lobby-button primary"
+                                @onclick="SalvarAparenciaAsync"
+                                disabled="@(_salvandoAparencia)">
+                            @if (_salvandoAparencia)
+                            {
+                                <i class="bi bi-hourglass-split"></i>
+                                <span>Salvando...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-check-lg"></i>
+                                <span>Salvar</span>
+                            }
+                        </button>
+                    </footer>
+
+                </div>
+            </div>
+        }
+
+        @* Modal de jogador local (adicionar/editar): nome + cor *@
+        @if (_modalJogadorAberto)
+        {
+            <div class="aparencia-overlay" @onclick="FecharModalJogador">
+                <div class="aparencia-modal" @onclick:stopPropagation="true">
+
+                    <header class="aparencia-modal-header">
+                        <h3>@(_modoEdicaoJogador ? "Editar jogador" : "Adicionar jogador")</h3>
+                        <button type="button" class="aparencia-fechar" @onclick="FecharModalJogador">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </header>
+
+                    <div class="aparencia-modal-body">
+
+                        <div class="aparencia-preview grande">
+                            <div class="aparencia-avatar" style="@EstiloAvatarJogadorModal()">
+                                @ObterIniciais(_nomeJogadorModal)
+                            </div>
+                        </div>
+
+                        <div class="aparencia-section">
+                            <label>Nome do jogador</label>
+                            <div class="field">
+                                <input class="lobby-input"
+                                       @bind="_nomeJogadorModal"
+                                       @bind:event="oninput"
+                                       maxlength="120"
+                                       placeholder="Ex: Jogador 2" />
+                            </div>
+                        </div>
+
+                        <div class="aparencia-section">
+                            <label>Cor do jogador</label>
+                            <div class="cor-grid">
+                                @foreach (var cor in _coresDisponiveis)
+                                {
+                                    var corLocal = cor;
+                                    <button type="button"
+                                            class="@(_corJogadorModal == corLocal ? "cor-chip ativo" : "cor-chip")"
+                                            style="background-color:@corLocal"
+                                            @onclick="() => _corJogadorModal = corLocal">
+                                        @if (_corJogadorModal == corLocal)
+                                        {
+                                            <i class="bi bi-check-lg"></i>
+                                        }
+                                    </button>
+                                }
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(_erroJogadorModal))
+                        {
+                            <div class="lobby-alert error compact">
+                                <i class="bi bi-exclamation-triangle"></i>
+                                <span>@_erroJogadorModal</span>
+                            </div>
+                        }
+
+                    </div>
+
+                    <footer class="aparencia-modal-footer">
+                        <button type="button"
+                                class="lobby-button secondary"
+                                @onclick="FecharModalJogador"
+                                disabled="@(_salvandoJogador)">
+                            Cancelar
+                        </button>
+                        <button type="button"
+                                class="lobby-button primary"
+                                @onclick="SalvarJogadorModalAsync"
+                                disabled="@(_salvandoJogador)">
+                            @if (_salvandoJogador)
+                            {
+                                <i class="bi bi-hourglass-split"></i>
+                                <span>Salvando...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-check-lg"></i>
+                                <span>@(_modoEdicaoJogador ? "Salvar" : "Adicionar")</span>
+                            }
+                        </button>
+                    </footer>
+
+                </div>
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .lobby-page {
+        max-width: 1280px;
+        margin: 0 auto;
+        color: inherit;
+    }
+
+    .lobby-hero {
+        display: flex;
+        justify-content: space-between;
+        gap: 1.5rem;
+        align-items: stretch;
+        margin-bottom: 1.4rem;
+    }
+
+    .lobby-eyebrow {
+        display: inline-flex;
+        margin-bottom: .45rem;
+        color: #60a5fa;
+        font-size: .78rem;
+        font-weight: 800;
+        letter-spacing: .09em;
+        text-transform: uppercase;
+    }
+
+    .lobby-hero h1 {
+        margin: 0;
+        font-size: clamp(2rem, 3vw, 3rem);
+        line-height: 1.05;
+        letter-spacing: -.04em;
+    }
+
+    .lobby-hero p {
+        margin: .75rem 0 0;
+        color: #94a3b8;
+        max-width: 680px;
+    }
+
+    .lobby-code-card {
+        min-width: 270px;
+        padding: 1.1rem 1.25rem;
+        border: 1px solid rgba(96, 165, 250, .22);
+        border-radius: 20px;
+        background: linear-gradient(135deg, rgba(37, 99, 235, .22), rgba(15, 23, 42, .9));
+        box-shadow: 0 20px 50px rgba(0,0,0,.22);
+    }
+
+        .lobby-code-card span {
+            display: block;
+            color: #93c5fd;
+            font-size: .82rem;
+            margin-bottom: .35rem;
+        }
+
+        .lobby-code-card strong {
+            display: block;
+            color: #e5e7eb;
+            font-size: 1.5rem;
+            margin-bottom: .75rem;
+        }
+
+        .lobby-code-card button {
+            border: 1px solid rgba(96, 165, 250, .32);
+            border-radius: 12px;
+            background: rgba(37, 99, 235, .18);
+            color: #bfdbfe;
+            padding: .45rem .7rem;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+    .lobby-shell {
+        border: 1px solid rgba(148, 163, 184, .16);
+        border-radius: 26px;
+        background: rgba(15, 23, 42, .62);
+        box-shadow: 0 26px 70px rgba(0,0,0,.28);
+        overflow: hidden;
+    }
+
+    .lobby-status-bar {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1px;
+        background: rgba(148, 163, 184, .12);
+        border-bottom: 1px solid rgba(148, 163, 184, .14);
+    }
+
+    .status-item {
+        padding: 1rem;
+        background: rgba(2, 6, 23, .32);
+    }
+
+        .status-item span {
+            display: block;
+            color: #94a3b8;
+            font-size: .78rem;
+            margin-bottom: .25rem;
+        }
+
+        .status-item strong {
+            color: #e5e7eb;
+        }
+
+    .lobby-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 1rem;
+        padding: 1rem;
+    }
+
+    .lobby-card {
+        border: 1px solid rgba(148, 163, 184, .15);
+        border-radius: 20px;
+        background: rgba(2, 6, 23, .32);
+        padding: 1rem;
+    }
+
+    .lobby-side {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+    }
+
+        .card-header h2 {
+            margin: 0;
+            font-size: 1.05rem;
+        }
+
+        .card-header p,
+        .help-text {
+            margin: .25rem 0 0;
+            color: #94a3b8;
+            font-size: .88rem;
+        }
+
+    .success-text {
+        color: #86efac;
+    }
+
+    .host-pill,
+    .mini-pill {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: .22rem .55rem;
+        font-size: .72rem;
+        font-weight: 900;
+    }
+
+        .host-pill,
+        .mini-pill.host {
+            background: rgba(59, 130, 246, .18);
+            color: #93c5fd;
+        }
+
+        .mini-pill.bot {
+            background: rgba(168, 85, 247, .16);
+            color: #d8b4fe;
+        }
+
+        .mini-pill.human {
+            background: rgba(34, 197, 94, .13);
+            color: #86efac;
+        }
+
+    .player-list {
+        display: grid;
+        gap: .75rem;
+    }
+
+    .player-row {
+        display: grid;
+        grid-template-columns: 44px minmax(0, 1fr) 110px auto;
+        gap: .8rem;
+        align-items: center;
+        padding: .8rem;
+        border: 1px solid rgba(148, 163, 184, .14);
+        border-radius: 18px;
+        background: rgba(15, 23, 42, .52);
+    }
+
+        .player-row.current-player {
+            border-color: rgba(96, 165, 250, .55);
+            background: rgba(37, 99, 235, .12);
+        }
+
+        .player-row.waiting-roll {
+            border-color: rgba(245, 158, 11, .45);
+        }
+
+    .player-avatar {
+        width: 44px;
+        height: 44px;
+        border-radius: 16px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(59, 130, 246, .2);
+        color: #bfdbfe;
+        font-weight: 900;
+        overflow: hidden;
+        border: 2px solid transparent;
+    }
+
+        .player-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+    .player-main {
+        min-width: 0;
+    }
+
+    .player-title {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .45rem;
+        align-items: center;
+    }
+
+        .player-title strong {
+            color: #e5e7eb;
+        }
+
+    .player-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .25rem;
+        color: #94a3b8;
+        font-size: .82rem;
+        margin-top: .25rem;
+    }
+
+    .player-order {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: .15rem;
+    }
+
+    .order-number {
+        color: #86efac;
+        font-weight: 900;
+        font-size: 1.2rem;
+    }
+
+    .order-pending {
+        color: #fbbf24;
+        font-weight: 900;
+    }
+
+    .order-muted {
+        color: #64748b;
+    }
+
+    .player-order small {
+        color: #94a3b8;
+    }
+
+    .player-actions {
+        display: flex;
+        gap: .45rem;
+        justify-content: flex-end;
+    }
+
+    .small-action,
+    .lobby-button {
+        border: 0;
+        border-radius: 13px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: .45rem;
+        font-weight: 900;
+        cursor: pointer;
+        transition: 160ms ease;
+    }
+
+    .small-action {
+        min-height: 36px;
+        padding: .45rem .65rem;
+    }
+
+        .small-action.primary,
+        .lobby-button.primary {
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            color: white;
+        }
+
+        .small-action.danger {
+            background: rgba(239, 68, 68, .14);
+            color: #fca5a5;
+        }
+
+        .small-action.neutro {
+            background: rgba(148, 163, 184, .16);
+            color: #cbd5e1;
+        }
+
+    .lobby-button {
+        min-height: 44px;
+        padding: .65rem .85rem;
+    }
+
+        .lobby-button.secondary {
+            background: rgba(148, 163, 184, .14);
+            color: #e5e7eb;
+        }
+
+        .lobby-button.full {
+            width: 100%;
+        }
+
+    button:disabled {
+        opacity: .55;
+        cursor: not-allowed;
+    }
+
+    .field {
+        display: flex;
+        flex-direction: column;
+        gap: .35rem;
+        margin-bottom: .85rem;
+    }
+
+        .field label {
+            color: #cbd5e1;
+            font-size: .82rem;
+            font-weight: 800;
+        }
+
+    .lobby-input {
+        width: 100%;
+        min-height: 44px;
+        border: 1px solid rgba(148, 163, 184, .18);
+        border-radius: 14px;
+        background: rgba(2, 6, 23, .64);
+        color: #e5e7eb;
+        padding: .65rem .75rem;
+        outline: none;
+    }
+
+        .lobby-input:focus {
+            border-color: rgba(96, 165, 250, .82);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, .16);
+        }
+
+    .host-actions {
+        display: grid;
+        gap: .65rem;
+    }
+
+    .lobby-alert {
+        display: flex;
+        gap: .7rem;
+        align-items: flex-start;
+        border-radius: 16px;
+        padding: .9rem 1rem;
+        margin-bottom: 1rem;
+        border: 1px solid transparent;
+    }
+
+        .lobby-alert.compact {
+            margin-bottom: .5rem;
+            padding: .75rem;
+        }
+
+        .lobby-alert.success {
+            background: rgba(34, 197, 94, .12);
+            border-color: rgba(34, 197, 94, .25);
+            color: #86efac;
+        }
+
+        .lobby-alert.error {
+            background: rgba(239, 68, 68, .12);
+            border-color: rgba(239, 68, 68, .25);
+            color: #fca5a5;
+        }
+
+        .lobby-alert.warning {
+            background: rgba(245, 158, 11, .12);
+            border-color: rgba(245, 158, 11, .25);
+            color: #fbbf24;
+        }
+
+    .lobby-loading {
+        display: flex;
+        align-items: center;
+        gap: .65rem;
+        padding: 1rem;
+        border-radius: 18px;
+        border: 1px solid rgba(148, 163, 184, .16);
+        background: rgba(15, 23, 42, .7);
+        color: #94a3b8;
+    }
+
+    .aparencia-preview {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        margin-bottom: 1rem;
+    }
+
+        .aparencia-preview.grande {
+            justify-content: center;
+            margin-bottom: 1.25rem;
+        }
+
+    .aparencia-avatar {
+        width: 56px;
+        height: 56px;
+        border-radius: 18px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(59, 130, 246, .2);
+        color: #bfdbfe;
+        font-weight: 900;
+        font-size: 1.1rem;
+        overflow: hidden;
+        border: 3px solid transparent;
+        flex-shrink: 0;
+    }
+
+    .aparencia-preview.grande .aparencia-avatar {
+        width: 92px;
+        height: 92px;
+        border-radius: 24px;
+        font-size: 1.8rem;
+    }
+
+    .aparencia-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .aparencia-info {
+        min-width: 0;
+    }
+
+        .aparencia-info strong {
+            display: block;
+            color: #e5e7eb;
+        }
+
+        .aparencia-info small {
+            color: #94a3b8;
+            font-size: .8rem;
+        }
+
+    .aparencia-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(2, 6, 23, .78);
+        backdrop-filter: blur(3px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 1rem;
+    }
+
+    .aparencia-modal {
+        width: min(94vw, 440px);
+        max-height: 90vh;
+        overflow-y: auto;
+        border: 1px solid rgba(96, 165, 250, .22);
+        border-radius: 22px;
+        background: linear-gradient(160deg, rgba(15,23,42,.98), rgba(2,6,23,.98));
+        box-shadow: 0 30px 70px rgba(0,0,0,.5);
+    }
+
+    .aparencia-modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1.2rem 1.4rem;
+        border-bottom: 1px solid rgba(148, 163, 184, .14);
+    }
+
+        .aparencia-modal-header h3 {
+            margin: 0;
+            color: #e5e7eb;
+            font-size: 1.1rem;
+        }
+
+    .aparencia-fechar {
+        border: 0;
+        background: rgba(148, 163, 184, .14);
+        color: #e5e7eb;
+        border-radius: 10px;
+        width: 34px;
+        height: 34px;
+        cursor: pointer;
+    }
+
+    .aparencia-modal-body {
+        padding: 1.4rem;
+    }
+
+    .aparencia-section {
+        margin-bottom: 1.25rem;
+    }
+
+        .aparencia-section > label {
+            display: block;
+            color: #cbd5e1;
+            font-size: .82rem;
+            font-weight: 800;
+            margin-bottom: .5rem;
+        }
+
+    .cor-grid {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        gap: .5rem;
+    }
+
+    .cor-chip {
+        aspect-ratio: 1;
+        border-radius: 10px;
+        border: 2px solid rgba(255,255,255,.12);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: .9rem;
+        padding: 0;
+    }
+
+        .cor-chip.ativo {
+            border-color: white;
+            box-shadow: 0 0 0 3px rgba(255,255,255,.25);
+        }
+
+    .upload-zone {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: .35rem;
+        padding: 1.25rem;
+        border: 2px dashed rgba(148, 163, 184, .3);
+        border-radius: 16px;
+        background: rgba(2, 6, 23, .4);
+        color: #94a3b8;
+        cursor: pointer;
+        text-align: center;
+    }
+
+        .upload-zone:hover {
+            border-color: rgba(96, 165, 250, .6);
+        }
+
+        .upload-zone i {
+            font-size: 1.6rem;
+            color: #60a5fa;
+        }
+
+        .upload-zone span {
+            color: #e5e7eb;
+            font-weight: 700;
+            font-size: .9rem;
+            word-break: break-all;
+        }
+
+        .upload-zone small {
+            font-size: .74rem;
+        }
+
+        .upload-zone ::deep input[type=file] {
+            display: none;
+        }
+
+    .aparencia-modal-footer {
+        display: flex;
+        gap: .65rem;
+        padding: 1.2rem 1.4rem;
+        border-top: 1px solid rgba(148, 163, 184, .14);
+    }
+
+        .aparencia-modal-footer .lobby-button {
+            flex: 1;
+        }
+
+    @@media (max-width: 1100px) {
+        .lobby-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .lobby-status-bar {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @@media (max-width: 760px) {
+        .lobby-hero {
+            flex-direction: column;
+        }
+
+        .lobby-code-card {
+            min-width: 0;
+        }
+
+        .lobby-status-bar {
+            grid-template-columns: 1fr;
+        }
+
+        .player-row {
+            grid-template-columns: 44px minmax(0, 1fr);
+        }
+
+        .player-order,
+        .player-actions {
+            grid-column: 2;
+        }
+
+        .player-actions {
+            justify-content: flex-start;
+        }
+    }
+</style>
+
+@code {
+    [Parameter]
+    public int IdPartida { get; set; }
+
+    private LobbyPartidaDTO? _lobby;
+    private List<BotPerfilDTO> _perfisBot = new();
+
+    private string? _identificadorJogador;
+    private string _nomeJogador = string.Empty;
+
+    private int _idPerfilBotSelecionado;
+    private string? _nomeBot;
+
+    // Jogador humano local (Local Multiplayer) — modal de adicionar/editar
+    private bool _modalJogadorAberto;
+    private bool _modoEdicaoJogador;
+    private bool _salvandoJogador;
+    private int _idJogadorEditando;
+    private string? _nomeJogadorModal;
+    private string? _corJogadorModal;
+    private string? _erroJogadorModal;
+
+    private bool _carregando = true;
+    private bool _processando;
+    private bool _inicializado;
+
+    private string? _mensagem;
+    private string? _erro;
+    private string? _erroAcao;
+
+    [Inject]
+    private IJSRuntime JS { get; set; } = default!;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _inicializado)
+            return;
+
+        _inicializado = true;
+
+        try
+        {
+            _identificadorJogador = await BrowserIdentificacaoService.ObterOuCriarIdentificadorAsync();
+
+            var nomeSalvo = await BrowserIdentificacaoService.ObterNomeAsync();
+            _nomeJogador = nomeSalvo ?? string.Empty;
+
+            await CarregarAsync();
+        }
+        catch (Exception ex)
+        {
+            _erro = ex.InnerException?.Message ?? ex.Message;
+        }
+        finally
+        {
+            _carregando = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CarregarAsync()
+    {
+        _erroAcao = null;
+
+        _lobby = await PartidaService.ObterLobbyAsync(
+            IdPartida,
+            _identificadorJogador);
+
+        if (_lobby == null)
+        {
+            _erro = "Partida nao encontrada.";
+            return;
+        }
+
+        _perfisBot = await PartidaService.ListarPerfisBotAsync();
+
+        if (_idPerfilBotSelecionado <= 0 && _perfisBot.Count > 0)
+            _idPerfilBotSelecionado = _perfisBot[0].IdPerfilBot;
+
+        if (string.IsNullOrWhiteSpace(_nomeJogador) && !string.IsNullOrWhiteSpace(_lobby.UsuarioAtualNome))
+            _nomeJogador = _lobby.UsuarioAtualNome;
+
+        var jogadorAtual = _lobby.Jogadores
+            .FirstOrDefault(x => x.IdPartidaJogador == _lobby.UsuarioAtualIdPartidaJogador);
+
+        if (jogadorAtual != null)
+        {
+            _corAtual = jogadorAtual.CorHex;
+            _avatarAtual = jogadorAtual.UrlAvatar;
+        }
+    }
+
+    private async Task SalvarNomeAsync()
+    {
+        if (_lobby == null || string.IsNullOrWhiteSpace(_identificadorJogador))
+            return;
+
+        await ExecutarAcaoAsync(async () =>
+        {
+            await BrowserIdentificacaoService.SalvarNomeAsync(_nomeJogador);
+
+            await PartidaService.AtualizarNomeJogadorAsync(
+                _lobby.IdPartida,
+                _identificadorJogador,
+                _nomeJogador);
+
+            // Recarrega o lobby passando o identificador do usuário atual.
+            // O retorno de AtualizarNomeJogadorAsync vem "anônimo" (sem
+            // UsuarioAtual...), então não o usamos diretamente.
+            await CarregarAsync();
+
+            _mensagem = "Nome salvo com sucesso.";
+        });
+    }
+
+    private async Task AdicionarBotAsync()
+    {
+        if (_lobby == null)
+            return;
+
+        await ExecutarAcaoAsync(async () =>
+        {
+            await PartidaService.AdicionarBotAsync(new AdicionarBotDTO
+            {
+                IdPartida = _lobby.IdPartida,
+                IdPerfilBot = _idPerfilBotSelecionado,
+                NomeBot = _nomeBot
+            });
+
+            _nomeBot = null;
+            _mensagem = "Bot adicionado.";
+            await CarregarAsync();
+        });
+    }
+
+    private void AbrirModalAdicionarJogador()
+    {
+        _modoEdicaoJogador = false;
+        _idJogadorEditando = 0;
+        _nomeJogadorModal = null;
+        _corJogadorModal = null;
+        _erroJogadorModal = null;
+        _modalJogadorAberto = true;
+    }
+
+    private void AbrirModalEditarJogador(LobbyJogadorDTO jogador)
+    {
+        _modoEdicaoJogador = true;
+        _idJogadorEditando = jogador.IdPartidaJogador;
+        _nomeJogadorModal = jogador.NomeJogador;
+        _corJogadorModal = jogador.CorHex;
+        _erroJogadorModal = null;
+        _modalJogadorAberto = true;
+    }
+
+    private void FecharModalJogador()
+    {
+        if (_salvandoJogador)
+            return;
+
+        _modalJogadorAberto = false;
+        _erroJogadorModal = null;
+    }
+
+    private async Task SalvarJogadorModalAsync()
+    {
+        if (_lobby == null)
+            return;
+
+        _salvandoJogador = true;
+        _erroJogadorModal = null;
+
+        try
+        {
+            if (_modoEdicaoJogador)
+            {
+                await PartidaService.AtualizarJogadorLocalAsync(
+                    _lobby.IdPartida,
+                    _idJogadorEditando,
+                    _nomeJogadorModal,
+                    _corJogadorModal);
+
+                _mensagem = "Jogador atualizado.";
+            }
+            else
+            {
+                await PartidaService.AdicionarJogadorLocalAsync(new AdicionarJogadorLocalDTO
+                {
+                    IdPartida = _lobby.IdPartida,
+                    Nome = _nomeJogadorModal,
+                    CorHex = _corJogadorModal
+                });
+
+                _mensagem = "Jogador adicionado.";
+            }
+
+            _modalJogadorAberto = false;
+            await CarregarAsync();
+        }
+        catch (Exception ex)
+        {
+            _erroJogadorModal = ex.InnerException?.Message ?? ex.Message;
+        }
+        finally
+        {
+            _salvandoJogador = false;
+        }
+    }
+
+    private string EstiloAvatarJogadorModal()
+    {
+        return string.IsNullOrWhiteSpace(_corJogadorModal)
+            ? string.Empty
+            : $"border-color:{_corJogadorModal};";
+    }
+
+    private async Task RemoverJogadorAsync(int idPartidaJogador)
+    {
+        if (_lobby == null)
+            return;
+
+        await ExecutarAcaoAsync(async () =>
+        {
+            await PartidaService.RemoverJogadorAsync(_lobby.IdPartida, idPartidaJogador);
+            _mensagem = "Jogador removido.";
+            await CarregarAsync();
+        });
+    }
+
+    private async Task IniciarDefinicaoOrdemAsync()
+    {
+        if (_lobby == null)
+            return;
+
+        await ExecutarAcaoAsync(async () =>
+        {
+            await PartidaService.IniciarDefinicaoOrdemAsync(_lobby.IdPartida);
+            _mensagem = "Definicao da ordem iniciada.";
+            await CarregarAsync();
+        });
+    }
+
+    private async Task IniciarPartidaAsync()
+    {
+        if (_lobby == null)
+            return;
+
+        await ExecutarAcaoAsync(async () =>
+        {
+            await PartidaService.IniciarPartidaAsync(_lobby.IdPartida);
+
+            NavigationManager.NavigateTo($"/jogo/partida/{_lobby.IdPartida}");
+        });
+    }
+
+    private async Task CopiarCodigoAsync()
+    {
+        if (_lobby == null)
+            return;
+
+        await ExecutarAcaoAsync(async () =>
+        {
+            await BrowserCopyAsync(_lobby.CodigoSala);
+            _mensagem = "Codigo copiado.";
+        });
+    }
+
+    private async Task BrowserCopyAsync(string texto)
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", texto);
+    }
+
+    private async Task ExecutarAcaoAsync(Func<Task> acao)
+    {
+        _processando = true;
+        _erroAcao = null;
+        _mensagem = null;
+
+        try
+        {
+            await acao();
+        }
+        catch (Exception ex)
+        {
+            _erroAcao = ex.InnerException?.Message ?? ex.Message;
+        }
+        finally
+        {
+            _processando = false;
+        }
+    }
+
+    private string ClasseJogador(LobbyJogadorDTO jogador)
+    {
+        var classes = "player-row";
+
+        if (_lobby?.UsuarioAtualIdPartidaJogador == jogador.IdPartidaJogador)
+            classes += " current-player";
+
+        if (jogador.ParticipaDesempateOrdem && _lobby?.IdStatusPartida == (int)StatusPartida.DefinindoOrdem)
+            classes += " waiting-roll";
+
+        return classes;
+    }
+
+    private static string EstiloAvatar(LobbyJogadorDTO jogador)
+    {
+        return string.IsNullOrWhiteSpace(jogador.CorHex)
+            ? string.Empty
+            : $"border-color:{jogador.CorHex};";
+    }
+
+    private static string ObterIniciais(string? nome)
+    {
+        if (string.IsNullOrWhiteSpace(nome))
+            return "?";
+
+        var partes = nome
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (partes.Length == 1)
+            return partes[0][0].ToString().ToUpperInvariant();
+
+        return $"{partes[0][0]}{partes[^1][0]}".ToUpperInvariant();
+    }
+
+    #region Dado
+
+    private DadoModal? _dadoModal;
+    private int _idJogadorRolando;
+    private List<int> _numerosRestritos = new();
+    private string _tituloDado = "Resultado";
+
+    // Fila de rolagem sequencial (Local Multiplayer): IDs dos humanos que ainda
+    // precisam rolar nesta passada. O host conduz um por um.
+    private readonly Queue<int> _filaRolagem = new();
+    private bool _conduzindoFila;
+
+    // ---- Fluxo individual (usado fora do Local Multiplayer ou clique avulso) ----
+
+    private async Task AbrirDadoAsync(int idPartidaJogador)
+    {
+        _conduzindoFila = false;
+        _idJogadorRolando = idPartidaJogador;
+        _tituloDado = MontarTituloDado(idPartidaJogador);
+
+        if (_dadoModal is not null)
+            await _dadoModal.AbrirAsync();
+    }
+
+    // ---- Fila sequencial (Local Multiplayer) ----
+
+    private bool ExistemHumanosPendentes()
+        => QtdHumanosPendentes > 0;
+
+    private int QtdHumanosPendentes =>
+        _lobby?.Jogadores.Count(j =>
+            !j.EhBot &&
+            j.ParticipaDesempateOrdem &&
+            !j.OrdemTurno.HasValue) ?? 0;
+
+    private async Task IniciarFilaRolagemAsync()
+    {
+        if (_lobby == null)
+            return;
+
+        // Monta a fila com todos os humanos que ainda precisam rolar (ordem de jogador).
+        var pendentes = _lobby.Jogadores
+            .Where(j => !j.EhBot && j.ParticipaDesempateOrdem && !j.OrdemTurno.HasValue)
+            .OrderBy(j => j.OrdemJogador)
+            .Select(j => j.IdPartidaJogador)
+            .ToList();
+
+        if (pendentes.Count == 0)
+            return;
+
+        _filaRolagem.Clear();
+        foreach (var id in pendentes)
+            _filaRolagem.Enqueue(id);
+
+        _conduzindoFila = true;
+
+        await AbrirProximoDaFilaAsync();
+    }
+
+    private async Task AbrirProximoDaFilaAsync()
+    {
+        if (_filaRolagem.Count == 0)
+        {
+            _conduzindoFila = false;
+            return;
+        }
+
+        _idJogadorRolando = _filaRolagem.Dequeue();
+        _tituloDado = MontarTituloDado(_idJogadorRolando);
+
+        if (_dadoModal is not null)
+            await _dadoModal.AbrirAsync();
+    }
+
+    private string MontarTituloDado(int idPartidaJogador)
+    {
+        var jogador = _lobby?.Jogadores
+            .FirstOrDefault(j => j.IdPartidaJogador == idPartidaJogador);
+
+        return jogador is null
+            ? "Rolar dado"
+            : $"Vez de {jogador.NomeJogador}";
+    }
+
+    private async Task<int> RolarNoServidorAsync()
+    {
+        var resultado = await PartidaService.RolarDadoOrdemAsync(
+            _lobby!.IdPartida,
+            _idJogadorRolando);
+
+        return resultado.ResultadoDado;
+    }
+
+    private async Task OnDadoConfirmado(int valor)
+    {
+        // Atualiza o lobby (o servidor ja rolou bots e tentou resolver a ordem).
+        await CarregarAsync();
+
+        if (_conduzindoFila)
+        {
+            // Se a fila atual esvaziou mas ainda ha humanos pendentes
+            // (ex.: empate gerou nova rodada), monta a proxima fila.
+            if (_filaRolagem.Count == 0 && QtdHumanosPendentes > 0)
+            {
+                var proximos = _lobby!.Jogadores
+                    .Where(j => !j.EhBot && j.ParticipaDesempateOrdem && !j.OrdemTurno.HasValue)
+                    .OrderBy(j => j.OrdemJogador)
+                    .Select(j => j.IdPartidaJogador)
+                    .ToList();
+
+                foreach (var id in proximos)
+                    _filaRolagem.Enqueue(id);
+            }
+
+            if (_filaRolagem.Count > 0)
+            {
+                await AbrirProximoDaFilaAsync();
+                return;
+            }
+
+            // Fila encerrada e ninguem mais pendente: ordem definida.
+            _conduzindoFila = false;
+            _mensagem = "Ordem definida.";
+        }
+        else
+        {
+            _mensagem = $"Voce tirou {valor}.";
+        }
+
+        StateHasChanged();
+    }
+
+    #endregion
+
+    #region Aparencia
+
+    private string? _corAtual;
+    private string? _avatarAtual;
+
+    private bool _modalAparenciaAberto;
+    private bool _salvandoAparencia;
+    private string? _erroModal;
+
+    private string? _corModal;
+    private string? _avatarPreviewModal;
+    private string _nomeImagem = string.Empty;
+    private IBrowserFile? _arquivoSelecionado;
+
+    private const long TamanhoMaximoUploadBytes = 5 * 1024 * 1024;
+
+    private readonly List<string> _coresDisponiveis = new()
+    {
+        "#ef4444", "#f97316", "#f59e0b", "#eab308",
+        "#84cc16", "#22c55e", "#10b981", "#14b8a6",
+        "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1",
+        "#8b5cf6", "#a855f7", "#d946ef", "#ec4899"
+    };
+
+    private void AbrirModalAparencia()
+    {
+        _corModal = _corAtual;
+        _avatarPreviewModal = _avatarAtual;
+        _arquivoSelecionado = null;
+        _nomeImagem = string.Empty;
+        _erroModal = null;
+        _modalAparenciaAberto = true;
+    }
+
+    private void FecharModalAparencia()
+    {
+        if (_salvandoAparencia)
+            return;
+
+        _modalAparenciaAberto = false;
+        _arquivoSelecionado = null;
+        _erroModal = null;
+    }
+
+    private void OnArquivoSelecionado(InputFileChangeEventArgs e)
+    {
+        _erroModal = null;
+
+        var arquivo = e.File;
+
+        if (arquivo is null)
+            return;
+
+        if (arquivo.Size > TamanhoMaximoUploadBytes)
+        {
+            _erroModal = "A imagem excede o tamanho maximo de 5 MB.";
+            _arquivoSelecionado = null;
+            return;
+        }
+
+        _arquivoSelecionado = arquivo;
+
+        if (string.IsNullOrWhiteSpace(_nomeImagem))
+            _nomeImagem = Path.GetFileNameWithoutExtension(arquivo.Name);
+    }
+
+    private async Task SalvarAparenciaAsync()
+    {
+        if (_lobby == null || string.IsNullOrWhiteSpace(_identificadorJogador))
+            return;
+
+        _salvandoAparencia = true;
+        _erroModal = null;
+
+        try
+        {
+            var urlAvatar = _avatarPreviewModal;
+
+            if (_arquivoSelecionado is not null)
+            {
+                urlAvatar = await AvatarService.SalvarUploadAsync(
+                    _arquivoSelecionado,
+                    _nomeImagem);
+            }
+
+            await PartidaService.AtualizarAparenciaJogadorAsync(
+                _lobby.IdPartida,
+                _identificadorJogador,
+                _corModal,
+                urlAvatar);
+
+            _corAtual = _corModal;
+            _avatarAtual = urlAvatar;
+
+            _modalAparenciaAberto = false;
+            _arquivoSelecionado = null;
+
+            // Recarrega o lobby com o identificador do usuário atual,
+            // já que o retorno do método vem sem os dados de UsuarioAtual.
+            await CarregarAsync();
+
+            _mensagem = "Aparencia atualizada.";
+        }
+        catch (Exception ex)
+        {
+            _erroModal = ex.InnerException?.Message ?? ex.Message;
+        }
+        finally
+        {
+            _salvandoAparencia = false;
+        }
+    }
+
+    private string EstiloAvatarPreview()
+    {
+        return string.IsNullOrWhiteSpace(_corAtual)
+            ? string.Empty
+            : $"border-color:{_corAtual};";
+    }
+
+    private string EstiloAvatarModal()
+    {
+        return string.IsNullOrWhiteSpace(_corModal)
+            ? string.Empty
+            : $"border-color:{_corModal};";
+    }
+
+    #endregion
+}

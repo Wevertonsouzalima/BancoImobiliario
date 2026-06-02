@@ -1,0 +1,45 @@
+﻿@inherits LayoutComponentBase
+
+<div class="@ClasseLayout">
+    <MenuSistema TituloSistema="Banco Imobiliário"
+                 Posicao="MenuSistemaPosicao.Lateral"
+                 Tema="_temaAtual"
+                 TemaChanged="AlterarTemaAsync"
+                 PermitirTrocaTema="true"
+                 PermitirRecolher="true"
+                 RecolhidoInicial="false"
+                 ExibirAreaUsuario="true"
+                 Usuario="_usuario"
+                 OnLogout="SairAsync" />
+
+    <main class="bi-layout-conteudo">
+        @Body
+    </main>
+</div>
+
+@code {
+    private TemaSistema _temaAtual = TemaSistema.Escuro;
+
+    private readonly MenuUsuarioInfo _usuario = new()
+    {
+        Nome = "Usuário Teste",
+        TextoSecundario = "Perfil futuro",
+        Iniciais = "UT"
+    };
+
+    private string ClasseLayout =>
+        _temaAtual == TemaSistema.Escuro
+            ? "bi-layout bi-layout-escuro"
+            : "bi-layout bi-layout-claro";
+
+    private Task AlterarTemaAsync(TemaSistema tema)
+    {
+        _temaAtual = tema;
+        return Task.CompletedTask;
+    }
+
+    private Task SairAsync()
+    {
+        return Task.CompletedTask;
+    }
+}

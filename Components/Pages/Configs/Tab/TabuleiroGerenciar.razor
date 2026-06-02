@@ -1,0 +1,842 @@
+﻿@page "/tabuleiro/gerenciar"
+
+@using BancoImobiliario.Models
+@using BancoImobiliario.Services.Tabuleiro
+@using Microsoft.AspNetCore.Components.Forms
+
+@inject GerenciamentoTabuleiroService GerenciamentoService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Gerenciar Tabuleiros - Banco Imobiliário</PageTitle>
+
+<div class="gerenciar-tabuleiro-page">
+
+    <section class="page-hero">
+        <div class="hero-content">
+            <span class="page-eyebrow">
+                <i class="bi bi-gear-fill"></i>
+                <span>Modo Desenvolvedor</span>
+            </span>
+            <div class="hero-header-row">
+                <div>
+                    <h1>Modelagem de Tabuleiros</h1>
+                    <p>Gerencie as especificações de tamanho e grade antes de desenhar o caminho das casas.</p>
+                </div>
+                <button type="button" class="btn primary btn-novo" @onclick="AbrirModalNovo">
+                    <i class="bi bi-plus-lg"></i> Novo Tabuleiro
+                </button>
+            </div>
+        </div>
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(_mensagemSucessoTopo))
+    {
+        <div class="alert success topo">
+            <i class="bi bi-check-circle-fill"></i>
+            <span>@_mensagemSucessoTopo</span>
+            <button type="button" class="close-btn" @onclick="() => _mensagemSucessoTopo = null"><i class="bi bi-x-lg"></i></button>
+        </div>
+    }
+
+    <div class="list-card">
+        <div class="card-header">
+            <h2>
+                <i class="bi bi-list-ul"></i>
+                Tabuleiros Cadastrados
+            </h2>
+
+            <div class="search-box">
+                <i class="bi bi-search search-icon"></i>
+                <input type="text" class="search-input" placeholder="Pesquisar em tudo (Ex: 70)..."
+                       @bind="TermoBusca" @bind:event="oninput" />
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table class="tabuleiro-table">
+                <thead>
+                    <tr>
+                        <th class="sortable" @onclick="@(() => MudarOrdenacao("Nome"))">
+                            Nome @RenderIconeOrdenacao("Nome")
+                        </th>
+                        <th class="sortable" @onclick="@(() => MudarOrdenacao("Casas"))">
+                            Casas @RenderIconeOrdenacao("Casas")
+                        </th>
+                        <th class="sortable" @onclick="@(() => MudarOrdenacao("Grade"))">
+                            Grade @RenderIconeOrdenacao("Grade")
+                        </th>
+                        <th class="sortable" @onclick="@(() => MudarOrdenacao("Data"))">
+                            Data Criação @RenderIconeOrdenacao("Data")
+                        </th>
+                        <th class="text-center">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_tabuleirosFiltrados.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="5" class="text-center vazio">Nenhum tabuleiro encontrado.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var tab in _tabuleirosFiltrados)
+                        {
+                            <tr>
+                                <td><strong class="tab-name">@tab.Nome</strong></td>
+                                <td><span class="badge-info">@tab.QtdCasas</span></td>
+                                <td><span class="badge-neutral">@($"{tab.LarguraGrade}x{tab.AlturaGrade}")</span></td>
+                                <td class="tab-date">@tab.DataCriacao.ToString("dd/MM/yyyy HH:mm")</td>
+                                <td class="acoes-cell">
+                                    <button class="btn-table edit" title="Editar Metadados" @onclick="() => AbrirModalEdicao(tab.TabuleiroId)">
+                                        <i class="bi bi-pencil-fill"></i>
+                                    </button>
+                                    <button class="btn-table layout" title="Desenhar Layout" @onclick="() => NavegarParaLayout(tab.TabuleiroId)">
+                                        <i class="bi bi-grid-3x3-gap"></i>
+                                    </button>
+                                    <button class="btn-table fronteira" title="Gerenciar Fronteiras (Atalhos)" @onclick="() => NavegarParaFronteiras(tab.TabuleiroId)">
+                                        <i class="bi bi-signpost-split-fill"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@* ===== MODAL DE CADASTRO / EDIÇÃO ===== *@
+@if (_exibirModal)
+{
+    <div class="modal-overlay" @onclick="FecharModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h2>
+                    <i class="bi @(IsEdicao ? "bi-pencil-square" : "bi-plus-circle-fill")"></i>
+                    @(IsEdicao ? "Editar Tabuleiro" : "Novo Tabuleiro")
+                </h2>
+                <button type="button" class="close-btn" @onclick="FecharModal">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                @if (!string.IsNullOrWhiteSpace(_mensagemErroModal))
+                {
+                    <div class="alert error">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        <span>@_mensagemErroModal</span>
+                    </div>
+                }
+
+                @if (_possuiLayoutSalvo)
+                {
+                    <div class="info-lock-panel">
+                        <i class="bi bi-lock-fill"></i>
+                        <p>Este tabuleiro já possui um layout montado. As dimensões e a quantidade de casas estão bloqueadas para manter a integridade.</p>
+                    </div>
+                }
+
+                <EditForm Model="_tabuleiroAtual" OnValidSubmit="SalvarTabuleiroAsync" FormName="frmModalTabuleiro">
+                    <DataAnnotationsValidator />
+
+                    <div class="form-grid">
+                        <div class="field span-2">
+                            <label>Nome do Tabuleiro</label>
+                            <div class="input-shell">
+                                <i class="bi bi-textarea-t input-icon"></i>
+                                <InputText class="setup-input" @bind-Value="_tabuleiroAtual.Nome" placeholder="Ex: Padrão Diagonal 70" />
+                            </div>
+                            <ValidationMessage For="() => _tabuleiroAtual.Nome" class="validation-error" />
+                        </div>
+
+                        <div class="field">
+                            <label>Quantidade de Casas</label>
+                            <div class="input-shell @(_possuiLayoutSalvo ? "disabled" : "")">
+                                <i class="bi bi-collection input-icon"></i>
+                                <InputNumber class="setup-input" @bind-Value="_tabuleiroAtual.QtdCasas" disabled="@_possuiLayoutSalvo" />
+                            </div>
+                            <ValidationMessage For="() => _tabuleiroAtual.QtdCasas" class="validation-error" />
+                        </div>
+
+                        <div class="field">
+                            <label>Tamanho da Casa (px)</label>
+                            <div class="input-shell">
+                                <i class="bi bi-aspect-ratio input-icon"></i>
+                                <InputNumber class="setup-input" @bind-Value="_tabuleiroAtual.TamanhoCasaPx" />
+                            </div>
+                            <ValidationMessage For="() => _tabuleiroAtual.TamanhoCasaPx" class="validation-error" />
+                        </div>
+
+                        <div class="field">
+                            <label>Grade (Colunas)</label>
+                            <div class="input-shell @(_possuiLayoutSalvo ? "disabled" : "")">
+                                <i class="bi bi-arrows-expand-vertical rotated input-icon"></i>
+                                <InputNumber class="setup-input" @bind-Value="_tabuleiroAtual.LarguraGrade" disabled="@_possuiLayoutSalvo" />
+                            </div>
+                            <ValidationMessage For="() => _tabuleiroAtual.LarguraGrade" class="validation-error" />
+                        </div>
+
+                        <div class="field">
+                            <label>Grade (Linhas)</label>
+                            <div class="input-shell @(_possuiLayoutSalvo ? "disabled" : "")">
+                                <i class="bi bi-arrows-expand-vertical input-icon"></i>
+                                <InputNumber class="setup-input" @bind-Value="_tabuleiroAtual.AlturaGrade" disabled="@_possuiLayoutSalvo" />
+                            </div>
+                            <ValidationMessage For="() => _tabuleiroAtual.AlturaGrade" class="validation-error" />
+                        </div>
+                    </div>
+
+                    <div class="form-actions modal-actions">
+                        <button type="button" class="btn secondary" @onclick="FecharModal" disabled="@_processando">Cancelar</button>
+                        <button type="submit" class="btn primary" disabled="@_processando">
+                            @if (_processando)
+                            {
+                                <i class="bi bi-hourglass-split spin"></i> <span>Salvando...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-check2-circle"></i> <span>@_textoBotaoSalvar</span>
+                            }
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .gerenciar-tabuleiro-page {
+        min-height: 100vh;
+        background: linear-gradient(160deg, #0b1120, #050810);
+        color: #e5e7eb;
+        padding: 1.5rem;
+    }
+
+    .page-hero {
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(148, 163, 184, 0.1);
+        padding: 1.5rem;
+        border-radius: 16px;
+        margin-bottom: 1.5rem;
+    }
+
+    .page-eyebrow {
+        color: #60a5fa;
+        font-size: .75rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .hero-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+        .hero-header-row h1 {
+            font-size: 1.8rem;
+            margin: 0 0 0.4rem 0;
+            font-weight: 800;
+        }
+
+        .hero-header-row p {
+            color: #94a3b8;
+            margin: 0;
+            font-size: 0.95rem;
+        }
+
+    .list-card {
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px solid rgba(148, 163, 184, 0.15);
+        border-radius: 16px;
+        padding: 1.5rem;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+    }
+
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        padding-bottom: 1rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+        .card-header h2 {
+            font-size: 1.2rem;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+    .search-box {
+        position: relative;
+        width: 300px;
+    }
+
+    .search-icon {
+        position: absolute;
+        left: 0.8rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #64748b;
+    }
+
+    .search-input {
+        width: 100%;
+        background: #090d16;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        padding: 0.5rem 0.5rem 0.5rem 2.2rem;
+        border-radius: 20px;
+        color: #f8fafc;
+        font-size: 0.85rem;
+        transition: border 0.2s;
+    }
+
+        .search-input:focus {
+            border-color: #3b82f6;
+            outline: none;
+        }
+
+    /* ===== TABELA ===== */
+    .table-wrapper {
+        overflow-x: auto;
+    }
+
+    .tabuleiro-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+    }
+
+        .tabuleiro-table th {
+            background: #090d16;
+            color: #94a3b8;
+            text-align: left;
+            padding: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+            border-bottom: 2px solid rgba(148, 163, 184, 0.15);
+            user-select: none;
+        }
+
+    .sortable {
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+        .sortable:hover {
+            background: #131b2e;
+            color: #e2e8f0;
+        }
+
+        .sortable i {
+            margin-left: 0.3rem;
+            font-size: 0.8rem;
+            color: #3b82f6;
+        }
+
+    .tabuleiro-table td {
+        padding: 0.8rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+        vertical-align: middle;
+    }
+
+    .tabuleiro-table tbody tr:hover {
+        background: rgba(59, 130, 246, 0.04);
+    }
+
+    .tab-name {
+        display: block;
+        color: #f1f5f9;
+        font-size: 0.95rem;
+    }
+
+    .tab-date {
+        color: #64748b;
+        font-size: 0.8rem;
+    }
+
+    .badge-info {
+        background: rgba(59, 130, 246, 0.15);
+        color: #93c5fd;
+        padding: 0.25rem 0.6rem;
+        border-radius: 6px;
+        font-weight: 700;
+    }
+
+    .badge-neutral {
+        background: rgba(148, 163, 184, 0.1);
+        color: #cbd5e1;
+        padding: 0.25rem 0.6rem;
+        border-radius: 6px;
+    }
+
+    .acoes-cell {
+        display: flex;
+        gap: 0.4rem;
+        justify-content: flex-end;
+    }
+
+    .btn-table {
+        border: 0;
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+    }
+
+        .btn-table.edit {
+            background: rgba(234, 179, 8, 0.15);
+            color: #fde047;
+        }
+
+            .btn-table.edit:hover {
+                background: rgba(234, 179, 8, 0.3);
+                transform: scale(1.05);
+            }
+
+        .btn-table.layout {
+            background: rgba(16, 185, 129, 0.15);
+            color: #6ee7b7;
+        }
+
+            .btn-table.layout:hover {
+                background: rgba(16, 185, 129, 0.3);
+                transform: scale(1.05);
+            }
+
+    /* ===== BOTOES E ALERTAS ===== */
+    .btn {
+        padding: 0.6rem 1.2rem;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        border: 1px solid transparent;
+        transition: all 0.2s;
+    }
+
+    .btn-novo {
+        padding: 0.7rem 1.4rem;
+        font-size: 0.9rem;
+    }
+
+    .btn.primary {
+        background: #2563eb;
+        color: white;
+    }
+
+        .btn.primary:hover {
+            background: #1d4ed8;
+        }
+
+    .btn.secondary {
+        background: rgba(148, 163, 184, 0.1);
+        color: #cbd5e1;
+        border-color: rgba(148, 163, 184, 0.2);
+    }
+
+        .btn.secondary:hover {
+            background: rgba(148, 163, 184, 0.2);
+        }
+
+    .alert {
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-size: 0.9rem;
+        position: relative;
+    }
+
+        .alert.success {
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #a7f3d0;
+        }
+
+        .alert.error {
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+        }
+
+    /* ===== MODAL ===== */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: #0f172a;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 16px;
+        width: 100%;
+        max-width: 600px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        animation: modalFadeIn 0.3s ease-out;
+    }
+
+    @@keyframes modalFadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.2rem 1.5rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+    .close-btn {
+        background: transparent;
+        border: none;
+        color: #94a3b8;
+        font-size: 1.2rem;
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+
+        .close-btn:hover {
+            color: #f8fafc;
+        }
+
+    .alert .close-btn {
+        position: absolute;
+        right: 1rem;
+    }
+
+    .modal-body {
+        padding: 1.5rem;
+    }
+
+    .modal-actions {
+        margin-top: 1.5rem;
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.8rem;
+    }
+
+    /* Form Fields Modal */
+    .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.2rem;
+    }
+
+    .field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+    }
+
+        .field.span-2 {
+            grid-column: span 2;
+        }
+
+        .field label {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #cbd5e1;
+        }
+
+    .input-shell {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .input-icon {
+        position: absolute;
+        left: 0.75rem;
+        color: #64748b;
+        font-size: 1rem;
+    }
+
+    .setup-input {
+        width: 100%;
+        background: #090d16;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        padding: 0.6rem 0.6rem 0.6rem 2.3rem;
+        border-radius: 8px;
+        color: #f8fafc;
+        font-size: 0.9rem;
+    }
+
+        .setup-input:focus {
+            border-color: #3b82f6;
+            outline: none;
+        }
+
+    .input-shell.disabled .setup-input {
+        background: #131924;
+        color: #64748b;
+        cursor: not-allowed;
+        border-color: rgba(148, 163, 184, 0.08);
+    }
+
+    .validation-error {
+        color: #f87171;
+        font-size: 0.75rem;
+        margin-top: 0.1rem;
+    }
+
+    .rotated {
+        transform: rotate(90deg);
+    }
+
+    .info-lock-panel {
+        display: flex;
+        gap: 0.6rem;
+        background: rgba(251, 191, 36, 0.08);
+        border: 1px solid rgba(251, 191, 36, 0.2);
+        padding: 0.8rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        color: #fde047;
+        font-size: 0.85rem;
+        line-height: 1.4;
+    }
+
+        .info-lock-panel p {
+            margin: 0;
+        }
+
+    .btn-table.fronteira {
+        background: rgba(168, 85, 247, 0.15);
+        color: #c084fc;
+    }
+
+        .btn-table.fronteira:hover {
+            background: rgba(168, 85, 247, 0.3);
+            transform: scale(1.05);
+        }
+</style>
+
+@code {
+    private List<Models.Tabuleiros> _tabuleiros = new();
+    private List<Models.Tabuleiros> _tabuleirosFiltrados = new();
+
+    private Models.Tabuleiros _tabuleiroAtual = new();
+
+    private bool _exibirModal = false;
+    private bool _possuiLayoutSalvo = false;
+    private bool _processando = false;
+
+    private string? _mensagemSucessoTopo;
+    private string? _mensagemErroModal;
+
+    // Filtro e Ordenação
+    private string _termoBusca = string.Empty;
+    private string _colunaOrdenacao = "Data";
+    private bool _ordenacaoAscendente = false;
+
+    private bool IsEdicao => _tabuleiroAtual.TabuleiroId > 0;
+    private string _textoBotaoSalvar => IsEdicao ? "Salvar Alterações" : "Criar Tabuleiro";
+
+    public string TermoBusca
+    {
+        get => _termoBusca;
+        set
+        {
+            _termoBusca = value;
+            AplicarFiltrosEOrdenacao();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarTabuleirosAsync();
+    }
+
+    private async Task CarregarTabuleirosAsync()
+    {
+        _tabuleiros = await GerenciamentoService.ObterTodosAsync();
+        AplicarFiltrosEOrdenacao();
+    }
+
+    // ================== LÓGICA DO GRID (FILTRO E ORDENAÇÃO) ==================
+
+    private void AplicarFiltrosEOrdenacao()
+    {
+        // 1. Filtragem Global
+        var query = _tabuleiros.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(_termoBusca))
+        {
+            var termo = _termoBusca.ToLowerInvariant();
+            query = query.Where(t =>
+                t.Nome.ToLowerInvariant().Contains(termo) ||
+                t.QtdCasas.ToString().Contains(termo) ||
+                t.LarguraGrade.ToString().Contains(termo) ||
+                t.AlturaGrade.ToString().Contains(termo) ||
+                t.TamanhoCasaPx.ToString().Contains(termo)
+            );
+        }
+
+        // 2. Ordenação
+        query = _colunaOrdenacao switch
+        {
+            "Nome" => _ordenacaoAscendente ? query.OrderBy(t => t.Nome) : query.OrderByDescending(t => t.Nome),
+            "Casas" => _ordenacaoAscendente ? query.OrderBy(t => t.QtdCasas) : query.OrderByDescending(t => t.QtdCasas),
+            "Grade" => _ordenacaoAscendente ? query.OrderBy(t => t.LarguraGrade).ThenBy(t => t.AlturaGrade) : query.OrderByDescending(t => t.LarguraGrade).ThenByDescending(t => t.AlturaGrade),
+            "Data" => _ordenacaoAscendente ? query.OrderBy(t => t.DataCriacao) : query.OrderByDescending(t => t.DataCriacao),
+            _ => query.OrderByDescending(t => t.DataCriacao)
+        };
+
+        _tabuleirosFiltrados = query.ToList();
+    }
+
+    private void MudarOrdenacao(string coluna)
+    {
+        if (_colunaOrdenacao == coluna)
+        {
+            _ordenacaoAscendente = !_ordenacaoAscendente;
+        }
+        else
+        {
+            _colunaOrdenacao = coluna;
+            _ordenacaoAscendente = true;
+        }
+        AplicarFiltrosEOrdenacao();
+    }
+
+    private MarkupString RenderIconeOrdenacao(string coluna)
+    {
+        if (_colunaOrdenacao != coluna) return new MarkupString("");
+        return _ordenacaoAscendente
+            ? new MarkupString("<i class='bi bi-sort-up'></i>")
+            : new MarkupString("<i class='bi bi-sort-down'></i>");
+    }
+
+    // ================== LÓGICA DO MODAL ==================
+
+    private void AbrirModalNovo()
+    {
+        _tabuleiroAtual = new Models.Tabuleiros { TamanhoCasaPx = 100, QtdCasas = 70, LarguraGrade = 15, AlturaGrade = 10 };
+        _possuiLayoutSalvo = false;
+        _mensagemErroModal = null;
+        _mensagemSucessoTopo = null;
+        _exibirModal = true;
+    }
+
+    private async Task AbrirModalEdicao(int id)
+    {
+        _mensagemErroModal = null;
+        _mensagemSucessoTopo = null;
+
+        var tab = await GerenciamentoService.ObterPorIdAsync(id);
+        if (tab != null)
+        {
+            _tabuleiroAtual = new Models.Tabuleiros
+            {
+                TabuleiroId = tab.TabuleiroId,
+                Nome = tab.Nome,
+                QtdCasas = tab.QtdCasas,
+                LarguraGrade = tab.LarguraGrade,
+                AlturaGrade = tab.AlturaGrade,
+                TamanhoCasaPx = tab.TamanhoCasaPx,
+                DataCriacao = tab.DataCriacao
+            };
+
+            _possuiLayoutSalvo = await GerenciamentoService.VerificarPossuiLayoutAsync(id);
+            _exibirModal = true;
+        }
+    }
+
+    private void FecharModal()
+    {
+        _exibirModal = false;
+    }
+
+    private async Task SalvarTabuleiroAsync()
+    {
+        _mensagemErroModal = null;
+        _processando = true;
+
+        try
+        {
+            await GerenciamentoService.SalvarAsync(_tabuleiroAtual);
+
+            _mensagemSucessoTopo = IsEdicao
+                            ? "Tabuleiro atualizado com sucesso!"
+                            : "Tabuleiro criado! Agora você já pode configurar o layout.";
+
+            await CarregarTabuleirosAsync();
+            FecharModal();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _mensagemErroModal = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _mensagemErroModal = "Falha ao gravar informações: " + (ex.InnerException?.Message ?? ex.Message);
+        }
+        finally
+        {
+            _processando = false;
+        }
+    }
+
+    private void NavegarParaLayout(int id)
+    {
+        NavigationManager.NavigateTo($"/tabuleiro/layout/{id}");
+    }
+    private void NavegarParaFronteiras(int id)
+    {
+        NavigationManager.NavigateTo($"/tabuleiro/fronteiras/{id}");
+    }
+}

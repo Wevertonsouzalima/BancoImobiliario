@@ -1,0 +1,433 @@
+﻿@using BancoImobiliario.Models.Jogo
+@using System.Globalization
+
+<div class="pcasa">
+
+    <div class="pcasa-header">
+        <span><i class="bi bi-geo-alt-fill"></i> Dados da Casa</span>
+        @if (Dados is not null && OnLimpar.HasDelegate)
+        {
+            <button type="button" class="pcasa-clear" @onclick="LimparAsync" title="Limpar">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        }
+    </div>
+
+    <div class="pcasa-body">
+
+        @if (Dados is null)
+        {
+            <div class="pcasa-vazio">
+                <i class="bi bi-cursor"></i>
+                <span>Clique numa casa para ver os detalhes.</span>
+            </div>
+        }
+        else if (Dados.Visibilidade == VisibilidadeCasa.Oculta)
+        {
+            <div class="pcasa-oculta">
+                <i class="bi bi-question-lg"></i>
+                <span>Casa ainda não revelada</span>
+            </div>
+        }
+        else if (Dados.Visibilidade == VisibilidadeCasa.SomentePreco)
+        {
+            <div class="pcasa-venda">
+                <span class="pcasa-venda-tag"><i class="bi bi-tag-fill"></i> Propriedade à venda</span>
+                <div class="pcasa-venda-valor">@Moeda(Dados.ValorCompra)</div>
+            </div>
+
+            @RenderAcoes
+        }
+        else
+        {
+            <div class="pcasa-titulo">
+                <span class="pcasa-nome">@Dados.Nome</span>
+                <span class="pcasa-pos">Posição @Dados.Posicao</span>
+            </div>
+
+            <div class="pcasa-linha">
+                <span><i class="bi bi-person-badge"></i> Proprietário</span>
+                <strong>@Dados.NomeProprietario</strong>
+            </div>
+            <div class="pcasa-linha">
+                <span><i class="bi bi-cash"></i> Compra</span>
+                <strong>@Moeda(Dados.ValorCompra)</strong>
+            </div>
+            <div class="pcasa-linha">
+                <span><i class="bi bi-house-door"></i> Aluguel</span>
+                <strong>@Moeda(Dados.ValorAluguel)</strong>
+            </div>
+            <div class="pcasa-linha">
+                <span><i class="bi bi-bricks"></i> Add. casa</span>
+                <strong>@Moeda(Dados.CustoCasa)</strong>
+            </div>
+            <div class="pcasa-linha">
+                <span><i class="bi bi-building"></i> Add. hotel</span>
+                <strong>@Moeda(Dados.CustoHotel)</strong>
+            </div>
+            <div class="pcasa-linha">
+                <span><i class="bi bi-houses"></i> Construções</span>
+                <strong>@Dados.QtdCasas c · @Dados.QtdHoteis h</strong>
+            </div>
+
+            @if (Dados.GrupoId is not null)
+            {
+                <div class="pcasa-sep"></div>
+                <div class="pcasa-linha">
+                    <span><i class="bi bi-collection"></i> Grupo</span>
+                    <span class="pcasa-grupo-chip">
+                        <span class="pcasa-grupo-cor"
+                              style="background-color:@(string.IsNullOrWhiteSpace(Dados.CorGrupo) ? "#64748b" : Dados.CorGrupo);"></span>
+                        <strong>@Dados.GrupoId</strong>
+                    </span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(Dados.DescricaoEfeitoGrupo))
+                {
+                    <div class="pcasa-efeito">
+                        <i class="bi bi-magic"></i>
+                        <span>@Dados.DescricaoEfeitoGrupo</span>
+                    </div>
+                }
+            }
+
+            @if (Dados.Fronteiras.Count > 0)
+            {
+                <div class="pcasa-sep"></div>
+                @foreach (var f in Dados.Fronteiras)
+                {
+                    <div class="pcasa-fronteira">
+                        <div class="pcasa-fronteira-rota">
+                            <i class="bi bi-signpost-split"></i> Fronteira → casa @f.PosicaoDestino
+                        </div>
+                        <div class="pcasa-linha sub">
+                            <span>Travessia</span>
+                            <strong>@Moeda(f.ValorTravessia)</strong>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(f.DescricaoEfeitoRequerido))
+                        {
+                            <div class="pcasa-linha sub">
+                                <span>Requer efeito</span>
+                                <strong>@f.DescricaoEfeitoRequerido</strong>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+
+            @RenderAcoes
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public DadosCasaPopup? Dados { get; set; }
+    [Parameter] public bool PodeComprar { get; set; } = true;
+    [Parameter] public bool PodeAddCasa { get; set; }
+    [Parameter] public bool PodeAddHotel { get; set; }
+    [Parameter] public EventCallback OnComprar { get; set; }
+    [Parameter] public EventCallback OnAddCasa { get; set; }
+    [Parameter] public EventCallback OnAddHotel { get; set; }
+    [Parameter] public EventCallback OnLimpar { get; set; }
+
+    // Botões contextuais: só existem no contexto de uma casa-propriedade.
+    private RenderFragment RenderAcoes => builder =>
+    {
+        if (Dados is null || !Dados.EhPropriedade)
+            return;
+
+        if (Dados.PodeOferecerCompra)
+        {
+            builder.OpenElement(0, "div");
+            builder.AddAttribute(1, "class", "pcasa-acoes");
+
+            builder.OpenElement(2, "button");
+            builder.AddAttribute(3, "type", "button");
+            builder.AddAttribute(4, "class", "pcasa-btn primary");
+            builder.AddAttribute(5, "disabled", !PodeComprar);
+            builder.AddAttribute(6, "onclick", EventCallback.Factory.Create(this, ComprarAsync));
+            builder.AddMarkupContent(7, "<i class=\"bi bi-cart-plus\"></i> Comprar");
+            builder.CloseElement();
+
+            builder.CloseElement();
+        }
+        else if (Dados.EhDonoJogadorDaVez && (PodeAddCasa || PodeAddHotel))
+        {
+            builder.OpenElement(10, "div");
+            builder.AddAttribute(11, "class", "pcasa-acoes dupla");
+
+            if (PodeAddCasa)
+            {
+                builder.OpenElement(12, "button");
+                builder.AddAttribute(13, "type", "button");
+                builder.AddAttribute(14, "class", "pcasa-btn neutro");
+                builder.AddAttribute(15, "onclick", EventCallback.Factory.Create(this, AddCasaAsync));
+                builder.AddMarkupContent(16, "<i class=\"bi bi-bricks\"></i> Add. Casa");
+                builder.CloseElement();
+            }
+
+            if (PodeAddHotel)
+            {
+                builder.OpenElement(17, "button");
+                builder.AddAttribute(18, "type", "button");
+                builder.AddAttribute(19, "class", "pcasa-btn neutro");
+                builder.AddAttribute(20, "onclick", EventCallback.Factory.Create(this, AddHotelAsync));
+                builder.AddMarkupContent(21, "<i class=\"bi bi-building\"></i> Add. Hotel");
+                builder.CloseElement();
+            }
+
+            builder.CloseElement();
+        }
+    };
+
+    private async Task ComprarAsync()
+    {
+        if (OnComprar.HasDelegate) await OnComprar.InvokeAsync();
+    }
+
+    private async Task AddCasaAsync()
+    {
+        if (OnAddCasa.HasDelegate) await OnAddCasa.InvokeAsync();
+    }
+
+    private async Task AddHotelAsync()
+    {
+        if (OnAddHotel.HasDelegate) await OnAddHotel.InvokeAsync();
+    }
+
+    private async Task LimparAsync()
+    {
+        if (OnLimpar.HasDelegate) await OnLimpar.InvokeAsync();
+    }
+
+    private static string Moeda(decimal? valor)
+        => (valor ?? 0m).ToString("C", CultureInfo.GetCultureInfo("pt-BR"));
+}
+
+<style>
+    .pcasa {
+        background: rgba(15, 23, 42, .6);
+        border: 1px solid rgba(148, 163, 184, .16);
+        border-radius: 12px;
+        overflow: hidden;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .pcasa-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: .55rem .8rem;
+        background: rgba(11, 17, 32, .8);
+        border-bottom: 1px solid rgba(148, 163, 184, .14);
+        color: #e2e8f0;
+        font-weight: 700;
+        font-size: .82rem;
+    }
+
+    .pcasa-clear {
+        background: transparent;
+        border: none;
+        color: #94a3b8;
+        cursor: pointer;
+        padding: .15rem;
+        border-radius: 6px;
+    }
+
+        .pcasa-clear:hover {
+            color: #f1f5f9;
+            background: rgba(148,163,184,.15);
+        }
+
+    .pcasa-body {
+        padding: .7rem .8rem .85rem;
+        color: #e2e8f0;
+        overflow-y: auto;
+    }
+
+    .pcasa-vazio,
+    .pcasa-oculta {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: .5rem;
+        padding: 1.4rem .5rem;
+        color: #64748b;
+        text-align: center;
+        font-size: .82rem;
+    }
+
+        .pcasa-oculta i {
+            font-size: 1.8rem;
+        }
+
+        .pcasa-vazio i {
+            font-size: 1.4rem;
+        }
+
+    .pcasa-linha {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .8rem;
+        padding: .32rem 0;
+        font-size: .85rem;
+    }
+
+        .pcasa-linha > span {
+            color: #94a3b8;
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+        }
+
+        .pcasa-linha.sub {
+            padding: .2rem 0;
+            font-size: .8rem;
+        }
+
+    .pcasa-titulo {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: .6rem;
+        padding-bottom: .5rem;
+    }
+
+    .pcasa-nome {
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #f8fafc;
+    }
+
+    .pcasa-pos {
+        font-size: .72rem;
+        color: #64748b;
+        white-space: nowrap;
+    }
+
+    .pcasa-sep {
+        height: 1px;
+        background: rgba(148,163,184,.14);
+        margin: .5rem 0;
+    }
+
+    .pcasa-grupo-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+    }
+
+    .pcasa-grupo-cor {
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        border: 1px solid rgba(255,255,255,.2);
+        flex-shrink: 0;
+    }
+
+    .pcasa-efeito {
+        display: flex;
+        gap: .5rem;
+        background: rgba(167, 139, 250, .12);
+        border-radius: 9px;
+        padding: .55rem .7rem;
+        margin-top: .35rem;
+        font-size: .82rem;
+        color: #ddd6fe;
+    }
+
+        .pcasa-efeito i {
+            color: #a78bfa;
+            margin-top: .1rem;
+        }
+
+    .pcasa-fronteira {
+        background: rgba(245, 158, 11, .08);
+        border: 1px solid rgba(245, 158, 11, .28);
+        border-radius: 9px;
+        padding: .5rem .7rem;
+        margin-top: .4rem;
+    }
+
+    .pcasa-fronteira-rota {
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        color: #fbbf24;
+        font-weight: 700;
+        font-size: .82rem;
+        margin-bottom: .2rem;
+    }
+
+    .pcasa-venda {
+        text-align: center;
+        padding: .5rem 0 .2rem;
+    }
+
+    .pcasa-venda-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        color: #94a3b8;
+        font-size: .8rem;
+    }
+
+    .pcasa-venda-valor {
+        font-size: 1.7rem;
+        font-weight: 800;
+        color: #f8fafc;
+        margin: .35rem 0 .8rem;
+    }
+
+    .pcasa-acoes {
+        display: flex;
+        gap: .5rem;
+        margin-top: .8rem;
+        padding-top: .7rem;
+        border-top: 1px solid rgba(148,163,184,.12);
+    }
+
+        .pcasa-acoes.dupla .pcasa-btn {
+            flex: 1;
+        }
+
+    .pcasa-btn {
+        width: 100%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: .4rem;
+        padding: .6rem .9rem;
+        border-radius: 9px;
+        font-weight: 700;
+        cursor: pointer;
+        border: 1px solid transparent;
+        font-size: .88rem;
+    }
+
+        .pcasa-btn.primary {
+            background: #10b981;
+            color: #04231a;
+        }
+
+            .pcasa-btn.primary:hover:not(:disabled) {
+                background: #34d399;
+            }
+
+            .pcasa-btn.primary:disabled {
+                opacity: .5;
+                cursor: not-allowed;
+            }
+
+        .pcasa-btn.neutro {
+            background: rgba(148,163,184,.14);
+            color: #e5e7eb;
+            border-color: rgba(148,163,184,.22);
+        }
+
+            .pcasa-btn.neutro:hover {
+                background: rgba(148,163,184,.24);
+            }
+</style>

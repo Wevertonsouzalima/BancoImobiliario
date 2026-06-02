@@ -1,0 +1,573 @@
+﻿:root {
+    --dll-menu-radius: 14px;
+    --dll-menu-transition: 180ms ease;
+}
+
+.dll-menu-sistema {
+    box-sizing: border-box;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+    .dll-menu-sistema *,
+    .dll-menu-sistema *::before,
+    .dll-menu-sistema *::after {
+        box-sizing: border-box;
+    }
+
+.dll-menu-tema-escuro {
+    --dll-menu-bg: #0f172a;
+    --dll-menu-bg-2: #111827;
+    --dll-menu-bg-3: #1e293b;
+    --dll-menu-text: #e5e7eb;
+    --dll-menu-muted: #94a3b8;
+    --dll-menu-border: rgba(148, 163, 184, 0.18);
+    --dll-menu-hover: rgba(59, 130, 246, 0.16);
+    --dll-menu-active: rgba(59, 130, 246, 0.28);
+    --dll-menu-primary: #3b82f6;
+    --dll-menu-danger: #ef4444;
+    --dll-menu-warning: #f59e0b;
+}
+
+.dll-menu-tema-claro {
+    --dll-menu-bg: #ffffff;
+    --dll-menu-bg-2: #f8fafc;
+    --dll-menu-bg-3: #e2e8f0;
+    --dll-menu-text: #0f172a;
+    --dll-menu-muted: #64748b;
+    --dll-menu-border: rgba(15, 23, 42, 0.12);
+    --dll-menu-hover: rgba(37, 99, 235, 0.10);
+    --dll-menu-active: rgba(37, 99, 235, 0.16);
+    --dll-menu-primary: #2563eb;
+    --dll-menu-danger: #dc2626;
+    --dll-menu-warning: #d97706;
+}
+
+/* =========================
+   LATERAL
+   ========================= */
+
+.dll-menu-lateral {
+    width: 280px;
+    min-width: 280px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(180deg, var(--dll-menu-bg), var(--dll-menu-bg-2));
+    color: var(--dll-menu-text);
+    border-right: 1px solid var(--dll-menu-border);
+    transition: width var(--dll-menu-transition), min-width var(--dll-menu-transition);
+    overflow: visible;
+}
+
+    .dll-menu-lateral.dll-menu-recolhido {
+        width: 72px;
+        min-width: 72px;
+    }
+
+.dll-menu-header {
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--dll-menu-border);
+}
+
+.dll-menu-brand {
+    min-width: 0;
+    flex: 1;
+}
+
+.dll-menu-brand-title {
+    display: block;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--dll-menu-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dll-menu-collapse-button {
+    width: 38px;
+    height: 38px;
+    border: 1px solid var(--dll-menu-border);
+    border-radius: 10px;
+    background: var(--dll-menu-bg-3);
+    color: var(--dll-menu-text);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--dll-menu-transition), border-color var(--dll-menu-transition);
+}
+
+    .dll-menu-collapse-button:hover {
+        background: var(--dll-menu-hover);
+        border-color: var(--dll-menu-primary);
+    }
+
+.dll-menu-body {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: visible;
+    padding: 0.75rem;
+}
+
+.dll-menu-recolhido .dll-menu-body {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+}
+
+.dll-menu-footer {
+    padding: 0.75rem;
+    border-top: 1px solid var(--dll-menu-border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.dll-menu-recolhido .dll-menu-footer {
+    align-items: center;
+}
+
+/* =========================
+   LISTAS
+   ========================= */
+
+.dll-menu-lista,
+.dll-menu-sublista,
+.dll-menu-flyout-lista,
+.dll-menu-lista-superior,
+.dll-menu-superior-dropdown {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.dll-menu-sublista {
+    padding-left: 0.75rem;
+    margin-top: 0.25rem;
+}
+
+.dll-menu-item {
+    position: relative;
+    margin: 0.15rem 0;
+}
+
+.dll-menu-link,
+.dll-menu-grupo-summary,
+.dll-menu-footer-action,
+.dll-menu-icon-button,
+.dll-menu-icon-link {
+    color: var(--dll-menu-text);
+    text-decoration: none;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    font: inherit;
+}
+
+.dll-menu-link,
+.dll-menu-grupo-summary {
+    min-height: 40px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.55rem 0.65rem;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background var(--dll-menu-transition), color var(--dll-menu-transition);
+}
+
+    .dll-menu-link:hover,
+    .dll-menu-grupo-summary:hover {
+        background: var(--dll-menu-hover);
+    }
+
+    .dll-menu-link.active {
+        background: var(--dll-menu-active);
+        color: var(--dll-menu-primary);
+        font-weight: 600;
+    }
+
+    .dll-menu-link i,
+    .dll-menu-grupo-summary i,
+    .dll-menu-superior-link i,
+    .dll-menu-footer-action i {
+        width: 20px;
+        min-width: 20px;
+        text-align: center;
+        font-size: 1.05rem;
+    }
+
+.dll-menu-texto {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dll-menu-grupo details > summary {
+    list-style: none;
+}
+
+    .dll-menu-grupo details > summary::-webkit-details-marker {
+        display: none;
+    }
+
+.dll-menu-fallback-icon {
+    width: 22px;
+    min-width: 22px;
+    height: 22px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--dll-menu-bg-3);
+    color: var(--dll-menu-primary);
+    font-size: 0.75rem;
+    font-weight: 800;
+}
+
+.dll-menu-separador {
+    height: 1px;
+    margin: 0.65rem 0.35rem;
+    background: var(--dll-menu-border);
+}
+
+/* =========================
+   RECOLHIDO
+   ========================= */
+
+.dll-menu-item-recolhido {
+    display: flex;
+    justify-content: center;
+}
+
+.dll-menu-icon-button,
+.dll-menu-icon-link {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--dll-menu-text);
+    position: relative;
+    transition: background var(--dll-menu-transition), color var(--dll-menu-transition);
+}
+
+    .dll-menu-icon-button:hover,
+    .dll-menu-icon-link:hover,
+    .dll-menu-icon-link.active {
+        background: var(--dll-menu-active);
+        color: var(--dll-menu-primary);
+    }
+
+.dll-menu-has-flyout {
+    position: relative;
+}
+
+.dll-menu-flyout {
+    position: absolute;
+    left: calc(100% + 10px);
+    top: 0;
+    min-width: 240px;
+    max-width: 320px;
+    padding: 0.75rem;
+    border-radius: 14px;
+    background: var(--dll-menu-bg);
+    color: var(--dll-menu-text);
+    border: 1px solid var(--dll-menu-border);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(-6px);
+    transition: opacity var(--dll-menu-transition), transform var(--dll-menu-transition), visibility var(--dll-menu-transition);
+    z-index: 2000;
+}
+
+.dll-menu-has-flyout:hover > .dll-menu-flyout {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(0);
+}
+
+.dll-menu-flyout-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--dll-menu-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.5rem;
+}
+
+/* =========================
+   STATUS
+   ========================= */
+
+.dll-menu-status {
+    margin-left: auto;
+    font-size: 0.68rem;
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 0.12rem 0.45rem;
+}
+
+.dll-menu-status-manutencao {
+    color: var(--dll-menu-warning);
+    background: rgba(245, 158, 11, 0.12);
+}
+
+.dll-menu-status-inativa {
+    color: var(--dll-menu-danger);
+    background: rgba(239, 68, 68, 0.12);
+}
+
+.dll-menu-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    position: absolute;
+    right: 8px;
+    top: 8px;
+}
+
+.dll-menu-status-dot-manutencao {
+    background: var(--dll-menu-warning);
+}
+
+.dll-menu-status-dot-inativa {
+    background: var(--dll-menu-danger);
+}
+
+/* =========================
+   RODAPÉ / USUÁRIO
+   ========================= */
+
+.dll-menu-footer-action {
+    min-height: 40px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.55rem 0.65rem;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background var(--dll-menu-transition), color var(--dll-menu-transition);
+}
+
+    .dll-menu-footer-action:hover {
+        background: var(--dll-menu-hover);
+    }
+
+.dll-menu-recolhido .dll-menu-footer-action {
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    justify-content: center;
+}
+
+.dll-menu-user-area {
+    min-height: 46px;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.45rem;
+    border-radius: 12px;
+    background: rgba(127, 127, 127, 0.08);
+}
+
+.dll-menu-recolhido .dll-menu-user-area {
+    padding: 0;
+    background: transparent;
+}
+
+.dll-menu-user-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    object-fit: cover;
+    border: 1px solid var(--dll-menu-border);
+}
+
+.dll-menu-user-avatar-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--dll-menu-primary);
+    color: white;
+    font-size: 0.8rem;
+    font-weight: 800;
+}
+
+.dll-menu-user-info {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.dll-menu-user-name {
+    font-size: 0.86rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dll-menu-user-secondary {
+    font-size: 0.75rem;
+    color: var(--dll-menu-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dll-menu-logout-button {
+    color: var(--dll-menu-danger);
+}
+
+/* =========================
+   SUPERIOR
+   ========================= */
+
+.dll-menu-superior {
+    width: 100%;
+    min-height: 58px;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: var(--dll-menu-bg);
+    color: var(--dll-menu-text);
+    border-bottom: 1px solid var(--dll-menu-border);
+    padding: 0 1rem;
+}
+
+.dll-menu-superior-brand {
+    display: flex;
+    align-items: center;
+    min-width: max-content;
+}
+
+.dll-menu-superior-title {
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.dll-menu-superior-nav {
+    flex: 1;
+    min-width: 0;
+}
+
+.dll-menu-lista-superior {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.dll-menu-superior-item {
+    position: relative;
+}
+
+.dll-menu-superior-link {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.45rem 0.7rem;
+    color: var(--dll-menu-text);
+    text-decoration: none;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+    .dll-menu-superior-link:hover,
+    .dll-menu-superior-link.active {
+        background: var(--dll-menu-active);
+        color: var(--dll-menu-primary);
+    }
+
+.dll-menu-superior-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    min-width: 250px;
+    padding: 0.65rem;
+    border-radius: 14px;
+    background: var(--dll-menu-bg);
+    border: 1px solid var(--dll-menu-border);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-6px);
+    z-index: 2100;
+    transition: opacity var(--dll-menu-transition), transform var(--dll-menu-transition), visibility var(--dll-menu-transition);
+}
+
+.dll-menu-superior-grupo:hover > .dll-menu-superior-dropdown {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+.dll-menu-superior-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.dll-menu-action-button {
+    width: 38px;
+    height: 38px;
+    border: 1px solid var(--dll-menu-border);
+    border-radius: 10px;
+    background: var(--dll-menu-bg-2);
+    color: var(--dll-menu-text);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+    .dll-menu-action-button:hover {
+        background: var(--dll-menu-hover);
+    }
+
+.dll-menu-superior-user {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.dll-menu-superior-user-name {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* =========================
+   ESTADOS
+   ========================= */
+
+.dll-menu-loading,
+.dll-menu-vazio,
+.dll-menu-erro {
+    padding: 0.75rem;
+    font-size: 0.9rem;
+    color: var(--dll-menu-muted);
+}
+
+.dll-menu-erro {
+    color: var(--dll-menu-danger);
+}

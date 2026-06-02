@@ -1,0 +1,568 @@
+﻿@using Microsoft.AspNetCore.Components
+
+@* ============================================================
+   DadoModal - modal de rolagem de dado animado.
+
+   Fluxo:
+   1. AbrirAsync() abre o modal e comeca o dado chacoalhando
+      (numeros aleatorios locais, apenas visuais).
+   2. O jogador clica "Parar".
+   3. O componente busca o resultado no servidor (ObterResultadoServidor).
+   4. A animacao DESACELERA e CONVERGE para o numero do servidor,
+      parando exatamente nele (sem "pulo").
+   5. O jogador clica "Confirmar" e AoConfirmar e disparado.
+
+   Em caso de erro do servidor, o modal MOSTRA a mensagem de erro
+   e nao reinicia o balancar.
+   ============================================================ *@
+
+<div class="dado-overlay" style="@(_aberto ? "" : "display:none;")">
+    <div class="dado-modal">
+
+        <header class="dado-modal-header">
+            <h3>@TituloModal</h3>
+        </header>
+
+        <div class="dado-area">
+            <div class="@ClasseDado()">
+                <span class="dado-numero">@_numeroExibido</span>
+            </div>
+        </div>
+
+        <div class="dado-status">
+            @switch (_estado)
+            {
+                case EstadoDado.Chacoalhando:
+                    <span class="status-texto">Role o dado!</span>
+                    break;
+
+                case EstadoDado.Parando:
+                    <span class="status-texto">Parando...</span>
+                    break;
+
+                case EstadoDado.Revelado:
+                    <span class="status-label">Voce tirou</span>
+                    <span class="status-resultado">@_resultadoServidor</span>
+                    break;
+
+                case EstadoDado.Erro:
+                    <span class="status-erro">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        @_mensagemErro
+                    </span>
+                    break;
+            }
+        </div>
+
+        <footer class="dado-modal-footer">
+            @switch (_estado)
+            {
+                case EstadoDado.Chacoalhando:
+                    <button type="button"
+                            class="dado-botao parar"
+                            @onclick="PararAsync">
+                        <i class="bi bi-hand-index-thumb"></i>
+                        Parar
+                    </button>
+                    break;
+
+                case EstadoDado.Parando:
+                    <button type="button" class="dado-botao parar" disabled>
+                        <i class="bi bi-hourglass-split"></i>
+                        Aguarde...
+                    </button>
+                    break;
+
+                case EstadoDado.Revelado:
+                    <button type="button"
+                            class="dado-botao confirmar"
+                            @onclick="ConfirmarAsync">
+                        <i class="bi bi-check-lg"></i>
+                        Confirmar
+                    </button>
+                    break;
+
+                case EstadoDado.Erro:
+                    <button type="button"
+                            class="dado-botao fechar"
+                            @onclick="FecharPorErro">
+                        <i class="bi bi-x-lg"></i>
+                        Fechar
+                    </button>
+                    break;
+            }
+        </footer>
+
+    </div>
+</div>
+
+<style>
+    .dado-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(2, 6, 23, .82);
+        backdrop-filter: blur(3px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1100;
+        padding: 1rem;
+    }
+
+    .dado-modal {
+        width: min(92vw, 380px);
+        border: 1px solid rgba(96, 165, 250, .22);
+        border-radius: 24px;
+        background: linear-gradient(160deg, rgba(15,23,42,.98), rgba(2,6,23,.98));
+        box-shadow: 0 30px 70px rgba(0,0,0,.55);
+        padding: 1.5rem;
+        text-align: center;
+    }
+
+    .dado-modal-header h3 {
+        margin: 0 0 1.25rem;
+        color: #e5e7eb;
+        font-size: 1.15rem;
+    }
+
+    .dado-area {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 1.25rem;
+    }
+
+    .dado-cubo {
+        width: 120px;
+        height: 120px;
+        border-radius: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(145deg, #f8fafc, #cbd5e1);
+        box-shadow: 0 14px 30px rgba(0,0,0,.4), inset 0 2px 6px rgba(255,255,255,.7);
+    }
+
+        .dado-cubo.chacoalhando {
+            animation: dado-tremer .28s infinite ease-in-out;
+        }
+
+        .dado-cubo.parando {
+            animation: dado-balancar .5s ease-out;
+        }
+
+        .dado-cubo.revelado {
+            background: linear-gradient(145deg, #dcfce7, #86efac);
+            box-shadow: 0 14px 34px rgba(34,197,94,.45), inset 0 2px 6px rgba(255,255,255,.7);
+            animation: dado-revelar .4s ease-out;
+        }
+
+        .dado-cubo.erro {
+            background: linear-gradient(145deg, #fee2e2, #fca5a5);
+            box-shadow: 0 14px 34px rgba(239,68,68,.4), inset 0 2px 6px rgba(255,255,255,.7);
+        }
+
+    .dado-numero {
+        font-size: 3.4rem;
+        font-weight: 900;
+        color: #0f172a;
+        font-variant-numeric: tabular-nums;
+    }
+
+    @@keyframes dado-tremer {
+        0% {
+            transform: translate(0,0) rotate(0deg);
+        }
+
+        25% {
+            transform: translate(-4px,3px) rotate(-7deg);
+        }
+
+        50% {
+            transform: translate(4px,-3px) rotate(7deg);
+        }
+
+        75% {
+            transform: translate(-3px,-3px) rotate(-4deg);
+        }
+
+        100% {
+            transform: translate(0,0) rotate(0deg);
+        }
+    }
+
+    @@keyframes dado-balancar {
+        0% {
+            transform: translate(-3px,2px) rotate(-5deg);
+        }
+
+        40% {
+            transform: translate(2px,-1px) rotate(3deg);
+        }
+
+        70% {
+            transform: translate(-1px,1px) rotate(-1deg);
+        }
+
+        100% {
+            transform: translate(0,0) rotate(0deg);
+        }
+    }
+
+    @@keyframes dado-revelar {
+        0% {
+            transform: scale(.82);
+        }
+
+        60% {
+            transform: scale(1.12);
+        }
+
+        100% {
+            transform: scale(1);
+        }
+    }
+
+    .dado-status {
+        min-height: 56px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: .15rem;
+        margin-bottom: 1.1rem;
+    }
+
+    .status-texto {
+        color: #94a3b8;
+        font-weight: 700;
+    }
+
+    .status-label {
+        color: #94a3b8;
+        font-size: .82rem;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+    }
+
+    .status-resultado {
+        color: #86efac;
+        font-size: 2rem;
+        font-weight: 900;
+    }
+
+    .status-erro {
+        color: #fca5a5;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: .4rem;
+        font-size: .9rem;
+    }
+
+    .dado-modal-footer {
+        display: flex;
+    }
+
+    .dado-botao {
+        flex: 1;
+        min-height: 48px;
+        border: 0;
+        border-radius: 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: .5rem;
+        font-weight: 900;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: 150ms ease;
+    }
+
+        .dado-botao.parar {
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            color: white;
+        }
+
+        .dado-botao.confirmar {
+            background: linear-gradient(135deg, #16a34a, #22c55e);
+            color: white;
+        }
+
+        .dado-botao.fechar {
+            background: rgba(148, 163, 184, .2);
+            color: #e5e7eb;
+        }
+
+        .dado-botao:disabled {
+            opacity: .6;
+            cursor: not-allowed;
+        }
+</style>
+
+@code {
+    // ---- Parametros ----
+
+    [Parameter]
+    public string TituloModal { get; set; } = "Resultado";
+
+    /// <summary>Menor valor possivel exibido durante o chacoalhar (visual).</summary>
+    [Parameter]
+    public int MinValor { get; set; } = 1;
+
+    /// <summary>Maior valor possivel exibido durante o chacoalhar (visual).</summary>
+    [Parameter]
+    public int MaxValor { get; set; } = 6;
+
+    /// <summary>
+    /// Numeros que NAO devem aparecer durante o chacoalhar (visual).
+    /// </summary>
+    [Parameter]
+    public List<int> NumerosRestritos { get; set; } = new();
+
+    /// <summary>
+    /// Funcao que busca o resultado real no servidor. Chamada ao clicar
+    /// "Parar". A animacao para exatamente neste numero.
+    /// </summary>
+    [Parameter]
+    public Func<Task<int>>? ObterResultadoServidor { get; set; }
+
+    /// <summary>Disparado quando o jogador confirma o resultado.</summary>
+    [Parameter]
+    public EventCallback<int> AoConfirmar { get; set; }
+
+    // ---- Estado interno ----
+
+    private enum EstadoDado
+    {
+        Chacoalhando,
+        Parando,
+        Revelado,
+        Erro
+    }
+
+    private bool _aberto;
+    private EstadoDado _estado = EstadoDado.Chacoalhando;
+
+    private int _numeroExibido = 1;
+    private int _resultadoServidor;
+    private string? _mensagemErro;
+
+    private CancellationTokenSource? _animacaoCts;
+
+    // ---- API publica ----
+
+    /// <summary>Abre o modal e inicia o dado chacoalhando.</summary>
+    public async Task AbrirAsync()
+    {
+        _aberto = true;
+        _estado = EstadoDado.Chacoalhando;
+        _resultadoServidor = 0;
+        _mensagemErro = null;
+        _numeroExibido = SortearNumeroVisual();
+
+        StateHasChanged();
+
+        await IniciarChacoalharAsync();
+    }
+
+    /// <summary>Fecha o modal e cancela qualquer animacao em andamento.</summary>
+    public void Fechar()
+    {
+        CancelarAnimacao();
+        _aberto = false;
+        StateHasChanged();
+    }
+
+    // ---- Animacao ----
+
+    /// <summary>
+    /// Loop de chacoalhar: troca o numero exibido rapidamente ate o
+    /// jogador clicar "Parar".
+    /// </summary>
+    private async Task IniciarChacoalharAsync()
+    {
+        CancelarAnimacao();
+        _animacaoCts = new CancellationTokenSource();
+        var token = _animacaoCts.Token;
+
+        try
+        {
+            while (!token.IsCancellationRequested && _estado == EstadoDado.Chacoalhando)
+            {
+                _numeroExibido = SortearNumeroVisual();
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(80, token);
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            // esperado quando o jogador clica "Parar"
+        }
+    }
+
+    /// <summary>
+    /// Chamado ao clicar "Parar". Busca o resultado do servidor e roda a
+    /// animacao de desaceleracao terminando exatamente nesse numero.
+    /// Em caso de erro, exibe a mensagem (NAO reinicia o balancar).
+    /// </summary>
+    private async Task PararAsync()
+    {
+        if (_estado != EstadoDado.Chacoalhando)
+            return;
+
+        _estado = EstadoDado.Parando;
+        CancelarAnimacao();
+        StateHasChanged();
+
+        // 1. Busca o resultado real no servidor.
+        int resultado;
+
+        try
+        {
+            if (ObterResultadoServidor is null)
+            {
+                resultado = SortearNumeroVisual();
+            }
+            else
+            {
+                resultado = await ObterResultadoServidor.Invoke();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Erro do servidor: mostra a mensagem e NAO reinicia o balancar.
+            _mensagemErro = ex.InnerException?.Message ?? ex.Message;
+            _estado = EstadoDado.Erro;
+            StateHasChanged();
+            return;
+        }
+
+        _resultadoServidor = resultado;
+
+        // 2. Animacao de desaceleracao convergindo para o resultado.
+        await DesacelerarAteResultadoAsync(resultado);
+
+        // 3. Revela.
+        _numeroExibido = resultado;
+        _estado = EstadoDado.Revelado;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Faz o dado desacelerar: cada troca demora mais que a anterior.
+    /// As ultimas trocas ja mostram o numero final, garantindo que a
+    /// animacao pare exatamente no resultado do servidor (sem "pulo").
+    /// </summary>
+    private async Task DesacelerarAteResultadoAsync(int resultado)
+    {
+        int[] intervalos = { 70, 90, 115, 145, 180, 230, 290, 360 };
+
+        for (var i = 0; i < intervalos.Length; i++)
+        {
+            var faltamPoucas = i >= intervalos.Length - 2;
+
+            _numeroExibido = faltamPoucas
+                ? resultado
+                : SortearNumeroVisual();
+
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(intervalos[i]);
+        }
+    }
+
+    private async Task ConfirmarAsync()
+    {
+        if (_estado != EstadoDado.Revelado)
+            return;
+
+        var resultado = _resultadoServidor;
+
+        _aberto = false;
+        StateHasChanged();
+
+        if (AoConfirmar.HasDelegate)
+            await AoConfirmar.InvokeAsync(resultado);
+    }
+
+    /// <summary>Fecha o modal apos um erro, sem disparar AoConfirmar.</summary>
+    private void FecharPorErro()
+    {
+        CancelarAnimacao();
+        _aberto = false;
+        _mensagemErro = null;
+        StateHasChanged();
+    }
+
+    // ---- Auxiliares ----
+
+    /// <summary>
+    /// Sorteia um numero apenas para exibicao durante a animacao.
+    /// Respeita o intervalo e evita numeros restritos (visual).
+    /// </summary>
+    private int SortearNumeroVisual()
+    {
+        var min = MinValor;
+        var max = MaxValor;
+
+        if (max < min)
+            max = min;
+
+        var validos = new List<int>();
+        for (var v = min; v <= max; v++)
+        {
+            if (!NumerosRestritos.Contains(v))
+                validos.Add(v);
+        }
+
+        if (validos.Count == 0)
+        {
+            for (var v = min; v <= max; v++)
+                validos.Add(v);
+        }
+
+        // Evita repetir o mesmo numero duas vezes seguidas.
+        if (validos.Count > 1)
+        {
+            var tentativas = 0;
+            int escolhido;
+            do
+            {
+                escolhido = validos[Random.Shared.Next(validos.Count)];
+                tentativas++;
+            }
+            while (escolhido == _numeroExibido && tentativas < 5);
+
+            return escolhido;
+        }
+
+        return validos[0];
+    }
+
+    private string ClasseDado()
+    {
+        switch (_estado)
+        {
+            case EstadoDado.Chacoalhando:
+                return "dado-cubo chacoalhando";
+
+            case EstadoDado.Parando:
+                return "dado-cubo parando";
+
+            case EstadoDado.Revelado:
+                return "dado-cubo revelado";
+
+            case EstadoDado.Erro:
+                return "dado-cubo erro";
+
+            default:
+                return "dado-cubo";
+        }
+    }
+
+    private void CancelarAnimacao()
+    {
+        _animacaoCts?.Cancel();
+        _animacaoCts?.Dispose();
+        _animacaoCts = null;
+    }
+}

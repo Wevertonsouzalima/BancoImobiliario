@@ -1,0 +1,25 @@
+@inherits LayoutComponentBase
+
+@*
+    Layout sem menu lateral. Usado pela tela de partida (jogo em si),
+    onde o jogador precisa de toda a tela disponivel.
+
+    Aplica-se a uma pagina especifica com a diretiva:
+        @layout EmptyLayout
+*@
+
+<div class="empty-layout">
+    @Body
+</div>
+
+<style>
+    .empty-layout {
+        min-height: 100vh;
+        background: linear-gradient(160deg, #0b1120, #050810);
+    }
+
+    /* Garante que nao herde nenhum padding/margin que o MainLayout colocaria. */
+    .empty-layout :first-child {
+        margin: 0;
+    }
+</style>

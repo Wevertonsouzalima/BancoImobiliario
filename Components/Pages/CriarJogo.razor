@@ -1,0 +1,1745 @@
+﻿@page "/jogo/criar"
+
+@using BancoImobiliario.Models
+@using BancoImobiliario.Models.Enums
+@using BancoImobiliario.Models.Helpers
+@using BancoImobiliario.Services
+@using BancoImobiliario.Services.Tabuleiro
+@using Microsoft.AspNetCore.Components.Forms
+
+@inject ConfiguracaoService ConfiguracaoService
+@inject NavigationManager NavigationManager
+@inject PartidaService PartidaService
+@inject BrowserIdentificacaoService BrowserIdentificacaoService
+@inject TabuleiroService TabuleiroService
+@inject GerenciamentoTabuleiroService GerenciamentoService
+
+<PageTitle>Criar Jogo</PageTitle>
+
+<div class="criar-jogo-page">
+
+    <section class="game-hero">
+        <div class="game-hero-content">
+            <span class="game-eyebrow">
+                <i class="bi bi-dice-5-fill"></i>
+                <span>Banco Imobiliário</span>
+            </span>
+            <h1>Criar Jogo</h1>
+            <p>Configure a sala, o tabuleiro e as regras de vitória antes de iniciar a partida.</p>
+
+            <button type="button" class="enter-game-link" @onclick="IrParaEntrarJogo">
+                <i class="bi bi-box-arrow-in-right"></i>
+                <span>Já tem um código? Entrar em um jogo</span>
+            </button>
+        </div>
+
+        <div class="room-ticket">
+            <div class="ticket-glow"></div>
+            <span class="ticket-label">
+                <i class="bi bi-key-fill"></i>
+                Código da sala
+            </span>
+            <strong>@CodigoSalaDisplay</strong>
+            <small>Gerado automaticamente</small>
+        </div>
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(_mensagemSucesso))
+    {
+        <div class="game-alert success">
+            <i class="bi bi-check-circle-fill"></i>
+            <span>@_mensagemSucesso</span>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_mensagemErro))
+    {
+        <div class="game-alert error">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <span>@_mensagemErro</span>
+        </div>
+    }
+
+    @if (_errosValidacao.Count > 0)
+    {
+        <div class="game-alert validation">
+            <i class="bi bi-shield-exclamation"></i>
+            <div>
+                <strong>Revise as regras da partida:</strong>
+                <ul>
+                    @foreach (var erro in _errosValidacao)
+                    {
+                        <li>@erro</li>
+                    }
+                </ul>
+            </div>
+        </div>
+    }
+
+    @if (_carregando)
+    {
+        <div class="loading-panel">
+            <i class="bi bi-hourglass-split"></i>
+            <span>Preparando configuração inicial...</span>
+        </div>
+    }
+    else
+    {
+        <EditForm Model="_configuracao" OnSubmit="SalvarAsync" FormName="frmCriarJogo">
+
+            <section class="game-shell">
+
+                <div class="mode-card">
+                    <div class="mode-header">
+                        <div>
+                            <h2>
+                                <i class="bi bi-controller"></i>
+                                Tipo de Jogo
+                            </h2>
+                            <p>Escolha como a partida será criada.</p>
+                        </div>
+                    </div>
+
+                    <div class="mode-options">
+                        @foreach (var tipo in _tiposJogo)
+                        {
+                            <button type="button"
+                                    class="@ClasseTipoJogo(tipo.Valor)"
+                                    @onclick="() => SelecionarTipoJogo(tipo.Valor)">
+                                <div class="mode-option-icon">
+                                    <i class="@ObterIconeTipoJogo(tipo.Valor)"></i>
+                                </div>
+                                <div class="mode-option-text">
+                                    <strong>@tipo.Descricao</strong>
+                                    <small>@ObterDescricaoTipoJogo(tipo.Valor)</small>
+                                </div>
+                                <div class="mode-option-check">
+                                    <i class="bi bi-check-lg"></i>
+                                </div>
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <div class="setup-tabs">
+                    <button type="button"
+                            class="@ClasseAba(AbaCriarJogo.Basicas)"
+                            @onclick="() => _abaAtual = AbaCriarJogo.Basicas">
+                        <i class="bi bi-sliders"></i>
+                        <span>Configurações Básicas</span>
+                        @if (ContarErrosAba(AbaCriarJogo.Basicas) > 0)
+                        {
+                            <span class="tab-badge">@ContarErrosAba(AbaCriarJogo.Basicas)</span>
+                        }
+                    </button>
+
+                    <button type="button"
+                            class="@ClasseAba(AbaCriarJogo.Tabuleiro)"
+                            @onclick="() => _abaAtual = AbaCriarJogo.Tabuleiro">
+                        <i class="bi bi-grid-3x3-gap"></i>
+                        <span>Configuração Tabuleiro</span>
+                        @if (ContarErrosAba(AbaCriarJogo.Tabuleiro) > 0)
+                        {
+                            <span class="tab-badge">@ContarErrosAba(AbaCriarJogo.Tabuleiro)</span>
+                        }
+                    </button>
+
+                    <button type="button"
+                            class="@ClasseAba(AbaCriarJogo.Finalizacao)"
+                            @onclick="() => _abaAtual = AbaCriarJogo.Finalizacao">
+                        <i class="bi bi-trophy"></i>
+                        <span>Finalização / Outras</span>
+                        @if (ContarErrosAba(AbaCriarJogo.Finalizacao) > 0)
+                        {
+                            <span class="tab-badge">@ContarErrosAba(AbaCriarJogo.Finalizacao)</span>
+                        }
+                    </button>
+
+                    <button type="button"
+                            class="random-all-button"
+                            @onclick="GerarTudoAleatorioAsync"
+                            title="Gerar configuração aleatória completa">
+                        <i class="bi bi-stars"></i>
+                        <span>Aleatorizar tudo</span>
+                    </button>
+                </div>
+
+                <div class="setup-content">
+
+                    @if (_abaAtual == AbaCriarJogo.Basicas)
+                    {
+                        <section class="setup-panel active-panel">
+                            <div class="panel-title">
+                                <div class="panel-title-icon">
+                                    <i class="bi bi-controller"></i>
+                                </div>
+                                <div>
+                                    <h2>Configurações Básicas</h2>
+                                    <p>Defina jogadores, dinheiro inicial, dificuldade, dados, casas e hotéis.</p>
+                                </div>
+                            </div>
+
+                            <div class="setup-grid">
+
+                                <div class="rule-box span-2">
+                                    <div class="rule-box-header">
+                                        <div>
+                                            <h3>
+                                                <i class="bi bi-door-closed"></i>
+                                                Identificação da sala
+                                            </h3>
+                                            <span>O código será gerado automaticamente ao criar a partida.</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="field-grid columns-2">
+                                        <div class="field">
+                                            <label>Código da Sala</label>
+                                            <div class="input-shell disabled">
+                                                <i class="bi bi-hash input-icon"></i>
+                                                <input class="setup-input"
+                                                       value="@CodigoSalaDisplay"
+                                                       disabled />
+                                            </div>
+                                        </div>
+
+                                        <div class="field">
+                                            <label>Dificuldade</label>
+                                            <div class="input-shell">
+                                                <i class="bi bi-speedometer2 input-icon"></i>
+                                                <InputSelect class="@ClasseCampo(nameof(Configuracao.Dificuldade))"
+                                                             @bind-Value="_configuracao.Dificuldade">
+                                                    @foreach (var item in _dificuldades)
+                                                    {
+                                                        <option value="@item.Valor">@item.Descricao</option>
+                                                    }
+                                                </InputSelect>
+                                                <i class="bi bi-chevron-down input-suffix"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="rule-box">
+                                    <div class="rule-box-header">
+                                        <div>
+                                            <h3>
+                                                <i class="bi bi-people-fill"></i>
+                                                Jogadores
+                                            </h3>
+                                            <span>Mínimo 2 jogadores.</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="hybrid-control">
+                                        <div class="stepper">
+                                            <button type="button" class="stepper-btn" @onclick="() => AjustarJogadores(-1)">
+                                                <i class="bi bi-dash-lg"></i>
+                                            </button>
+                                            <div class="stepper-display">
+                                                <strong>@_configuracao.QtdJogadores</strong>
+                                                <small>participantes</small>
+                                            </div>
+                                            <button type="button" class="stepper-btn" @onclick="() => AjustarJogadores(1)">
+                                                <i class="bi bi-plus-lg"></i>
+                                            </button>
+                                        </div>
+                                        <input type="range"
+                                               min="2"
+                                               max="8"
+                                               step="1"
+                                               class="game-slider"
+                                               value="@_configuracao.QtdJogadores"
+                                               style="@EstiloProgresso(_configuracao.QtdJogadores, 2, 8)"
+                                               @oninput="OnQtdJogadoresInput" />
+                                        <div class="slider-ticks">
+                                            <span>2</span><span>4</span><span>6</span><span>8</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="rule-box">
+                                    <div class="rule-box-header">
+                                        <div>
+                                            <h3>
+                                                <i class="bi bi-cash-coin"></i>
+                                                Saldo inicial
+                                            </h3>
+                                            <span>Dinheiro recebido ao começar.</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="money-hero">
+                                        <span class="money-currency">R$</span>
+                                        <input type="number" step="any"
+                                               class="@ClasseCampo(nameof(Configuracao.ValorInicial)) money-input"
+                                               value="@_configuracao.ValorInicial.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                               @onchange="OnValorInicialInput" />
+                                    </div>
+
+                                    <div class="quick-chips">
+                                        @foreach (var preset in new[] { 1500m, 2500m, 5000m, 10000m })
+                                        {
+                                            var local = preset;
+                                            <button type="button"
+                                                    class="@(_configuracao.ValorInicial == local ? "quick-chip active" : "quick-chip")"
+                                                    @onclick="() => _configuracao.ValorInicial = local">
+                                                R$ @local.ToString("N0")
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="rule-box span-2">
+                                    <div class="rule-box-header">
+                                        <div>
+                                            <h3>
+                                                <i class="bi bi-arrow-repeat"></i>
+                                                Bônus de volta
+                                            </h3>
+                                            <span>Valor recebido ao completar uma volta no tabuleiro.</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="field-grid columns-2">
+                                        <div class="field">
+                                            <label>Valor do bônus</label>
+                                            <div class="input-shell">
+                                                <span class="input-prefix">R$</span>
+                                                <InputNumber class="@ClasseCampo(nameof(Configuracao.BonusVolta))"
+                                                             @bind-Value="_configuracao.BonusVolta" />
+                                            </div>
+                                        </div>
+
+                                        <div class="field">
+                                            <label>
+                                                Aplicar até a volta
+                                                @if (_configuracao.BonusVolta <= 0)
+                                                {
+                                                    <span class="label-hint">— defina um bônus primeiro</span>
+                                                }
+                                            </label>
+                                            <div class="input-shell @(_configuracao.BonusVolta <= 0 ? "disabled" : "")">
+                                                <i class="bi bi-flag-fill input-icon"></i>
+                                                <InputNumber class="@ClasseCampo(nameof(Configuracao.BonusAteVolta))"
+                                                             @bind-Value="_configuracao.BonusAteVolta"
+                                                             disabled="@(_configuracao.BonusVolta <= 0)" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="rule-box span-2">
+                                    <div class="rule-box-header">
+                                        <div>
+                                            <h3>
+                                                <i class="bi bi-dice-5-fill"></i>
+                                                Configurar dado
+                                            </h3>
+                                            <span>O valor máximo é travado pelo mínimo automaticamente.</span>
+                                        </div>
+                                        <div class="dice-preview">
+                                            <span>@_configuracao.ValMinDado</span>
+                                            <i class="bi bi-arrow-right"></i>
+                                            <span>@_configuracao.ValMaxDado</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="dual-slider-group">
+                                        <div class="dual-slider-row">
+                                            <div class="dual-slider-label">
+                                                <strong>Valor mínimo</strong>
+                                                <span class="dual-slider-value">@_configuracao.ValMinDado</span>
+                                            </div>
+                                            <input type="range"
+                                                   min="@_limiteGeralMinDado"
+                                                   max="@_limiteGeralMaxDado"
+                                                   step="1"
+                                                   class="game-slider"
+                                                   value="@_configuracao.ValMinDado"
+                                                   style="@EstiloProgresso(_configuracao.ValMinDado, _limiteGeralMinDado, _limiteGeralMaxDado)"
+                                                   @oninput="OnDadoMinInput" />
+                                        </div>
+
+                                        <div class="dual-slider-row">
+                                            <div class="dual-slider-label">
+                                                <strong>Valor máximo</strong>
+                                                <span class="dual-slider-value">@_configuracao.ValMaxDado</span>
+                                                <span class="dual-slider-lock">
+                                                    <i class="bi bi-lock-fill"></i> mín @_configuracao.ValMinDado
+                                                </span>
+                                            </div>
+                                            <input type="range"
+                                                   min="@_configuracao.ValMinDado"
+                                                   max="@_limiteGeralMaxDado"
+                                                   step="1"
+                                                   class="game-slider accent-amber"
+                                                   value="@_configuracao.ValMaxDado"
+                                                   style="@EstiloProgresso(_configuracao.ValMaxDado, _configuracao.ValMinDado, _limiteGeralMaxDado)"
+                                                   @oninput="OnDadoMaxInput" />
+                                        </div>
+
+                                        <div class="field">
+                                            <label>Restrição (opcional)</label>
+                                            <div class="input-shell">
+                                                <i class="bi bi-funnel input-icon"></i>
+                                                <InputText class="@ClasseCampo(nameof(Configuracao.RestricaoDado))"
+                                                           placeholder="Ex: não permitir valores pares"
+                                                           @bind-Value="_configuracao.RestricaoDado" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="rule-box span-2">
+                                    <div class="rule-box-header">
+                                        <div>
+                                            <h3>
+                                                <i class="bi bi-house-fill"></i>
+                                                Casas e Hotéis
+                                            </h3>
+                                            <span>O mínimo de casas para hotel respeita o máximo de casas.</span>
+                                        </div>
+                                        <div class="dice-preview">
+                                            <i class="bi bi-house"></i> @_configuracao.QtdMaxCasas
+                                            <i class="bi bi-dot"></i>
+                                            <i class="bi bi-building"></i> @_configuracao.QtdMaxHoteis
+                                        </div>
+                                    </div>
+
+                                    <div class="dual-slider-group">
+                                        <div class="dual-slider-row">
+                                            <div class="dual-slider-label">
+                                                <strong>Máx. de casas por propriedade</strong>
+                                                <span class="dual-slider-value">@_configuracao.QtdMaxCasas</span>
+                                            </div>
+                                            <input type="range"
+                                                   min="0"
+                                                   max="10"
+                                                   step="1"
+                                                   class="game-slider"
+                                                   value="@_configuracao.QtdMaxCasas"
+                                                   style="@EstiloProgresso(_configuracao.QtdMaxCasas, 0, 10)"
+                                                   @oninput="OnMaxCasasInput" />
+                                        </div>
+
+                                        <div class="dual-slider-row">
+                                            <div class="dual-slider-label">
+                                                <strong>Mín. casas para construir hotel</strong>
+                                                <span class="dual-slider-value">@_configuracao.MinCasasParaHotel</span>
+                                                <span class="dual-slider-lock">
+                                                    <i class="bi bi-lock-fill"></i> máx @_configuracao.QtdMaxCasas
+                                                </span>
+                                            </div>
+                                            <input type="range"
+                                                   min="0"
+                                                   max="@(_configuracao.QtdMaxCasas <= 0 ? 1 : _configuracao.QtdMaxCasas)"
+                                                   step="1"
+                                                   class="game-slider accent-amber"
+                                                   value="@_configuracao.MinCasasParaHotel"
+                                                   @oninput="OnMinCasasHotelInput"
+                                                   style="@EstiloProgresso(_configuracao.MinCasasParaHotel, 0, _configuracao.QtdMaxCasas)"
+                                                   disabled="@(_configuracao.QtdMaxCasas <= 0)" />
+                                        </div>
+
+                                        <div class="dual-slider-row">
+                                            <div class="dual-slider-label">
+                                                <strong>Máx. de hotéis por propriedade</strong>
+                                                <span class="dual-slider-value">@_configuracao.QtdMaxHoteis</span>
+                                            </div>
+                                            <input type="range"
+                                                   min="0"
+                                                   max="10"
+                                                   step="1"
+                                                   class="game-slider accent-violet"
+                                                   value="@_configuracao.QtdMaxHoteis"
+                                                   style="@EstiloProgresso(_configuracao.QtdMaxHoteis, 0, 10)"
+                                                   @oninput="OnMaxHoteisInput" />
+                                        </div>
+                                    </div>
+
+                                    <label class="@ClasseChip(_configuracao.RemoverCasasAposHotel)" style="margin-top: 1rem;">
+                                        <InputCheckbox @bind-Value="_configuracao.RemoverCasasAposHotel" />
+                                        <span class="chip-content">
+                                            <strong>Remover casas após hotel</strong>
+                                            <small>Ao comprar hotel, as casas usadas deixam de contar separadamente.</small>
+                                        </span>
+                                        <i class="bi bi-check-circle-fill chip-check"></i>
+                                    </label>
+                                </div>
+
+                            </div>
+                        </section>
+                    }
+
+                    @if (_abaAtual == AbaCriarJogo.Tabuleiro)
+                    {
+                        <section class="setup-panel active-panel">
+                            <div class="panel-title">
+                                <div class="panel-title-icon">
+                                    <i class="bi bi-grid-3x3-gap"></i>
+                                </div>
+                                <div>
+                                    <h2>Configuração do Tabuleiro</h2>
+                                    <p>Selecione o layout, fronteiras, tipos de casas e efeitos.</p>
+                                </div>
+                            </div>
+
+                            <div class="setup-grid">
+
+                                <div class="rule-box span-2">
+                                    <div class="rule-box-header with-action">
+                                        <div>
+                                            <h3>
+                                                <i class="bi bi-map"></i>
+                                                Configuração geral
+                                            </h3>
+                                            <span>Escolha o formato do mapa e suas regras.</span>
+                                        </div>
+
+                                        <button type="button"
+                                                class="mini-action-button"
+                                                @onclick="GerarTabuleiroAleatorioAsync">
+                                            <i class="bi bi-shuffle"></i>
+                                            <span>Aleatorizar tabuleiro</span>
+                                        </button>
+                                    </div>
+
+                                    <div class="field" style="margin-bottom: 1.5rem;">
+                                        <label>Selecione o Tabuleiro</label>
+                                        <div class="input-shell">
+                                            <i class="bi bi-grid-3x3 input-icon"></i>
+                                            <InputSelect class="@ClasseCampo(nameof(Configuracao.IdTabuleiro))"
+                                                         Value="@_configuracao.IdTabuleiro"
+                                                         ValueExpression="@(() => _configuracao.IdTabuleiro)"
+                                                         ValueChanged="@((int id) => OnTabuleiroChangedAsync(id))">
+                                                <option value="0" disabled>Selecione um tabuleiro...</option>
+                                                @foreach (var tab in _tabuleirosDisponiveis)
+                                                {
+                                                    <option value="@tab.TabuleiroId">@tab.Nome (@tab.QtdCasas casas)</option>
+                                                }
+                                            </InputSelect>
+                                            <i class="bi bi-chevron-down input-suffix"></i>
+                                        </div>
+                                    </div>
+
+                                    <div class="chip-row" style="margin-bottom: 1rem;">
+                                        <label class="@ClasseChip(_tabuleiroAleatorio)">
+                                            <InputCheckbox @bind-Value="_tabuleiroAleatorio" />
+                                            <span class="chip-content">
+                                                <strong>Gerar posições aleatórias</strong>
+                                                <small>Distribui as casas aleatoriamente pela grade.</small>
+                                            </span>
+                                            <i class="bi bi-check-circle-fill chip-check"></i>
+                                        </label>
+
+                                        <label class="@ClasseChip(_configuracao.TabuleiroOculto)">
+                                            <InputCheckbox @bind-Value="_configuracao.TabuleiroOculto" />
+                                            <span class="chip-content">
+                                                <strong>Nomes ocultos</strong>
+                                                <small>Oculta nomes das posições no início.</small>
+                                            </span>
+                                            <i class="bi bi-check-circle-fill chip-check"></i>
+                                        </label>
+                                    </div>
+
+                                    <div class="dual-slider-group">
+                                        <div class="dual-slider-row">
+                                            <div class="dual-slider-label">
+                                                <strong>Número de grupos</strong>
+                                                <span class="dual-slider-value">@_numeroGrupos</span>
+                                            </div>
+                                            <input type="range"
+                                                   min="0"
+                                                   max="@_maxGrupos"
+                                                   step="1"
+                                                   class="game-slider"
+                                                   value="@_numeroGrupos"
+                                                   style="@EstiloProgresso(_numeroGrupos, 0, _maxGrupos)"
+                                                   @oninput="OnNumeroGruposInput" />
+                                        </div>
+
+                                        <div class="dual-slider-row">
+                                            <div class="dual-slider-label">
+                                                <strong>Fronteiras</strong>
+                                                <span class="dual-slider-value">@_numeroFronteiras <small>de @_maxFronteirasTabuleiroAtual</small></span>
+                                            </div>
+                                            <input type="range"
+                                                   min="0"
+                                                   max="@_maxFronteirasTabuleiroAtual"
+                                                   step="1"
+                                                   class="game-slider accent-amber"
+                                                   value="@_numeroFronteiras"
+                                                   disabled="@(_maxFronteirasTabuleiroAtual == 0)"
+                                                   style="@EstiloProgresso(_numeroFronteiras, 0, _maxFronteirasTabuleiroAtual)"
+                                                   @oninput="OnNumeroFronteirasInput" />
+                                        </div>
+
+                                        <div class="field">
+                                            <label>Regra de fronteira</label>
+                                            <div class="input-shell">
+                                                <i class="bi bi-signpost-split input-icon"></i>
+                                                <InputSelect class="@ClasseCampo(nameof(Configuracao.RegraFronteira))"
+                                                             @bind-Value="_configuracao.RegraFronteira">
+                                                    @foreach (var item in _regrasFronteira)
+                                                    {
+                                                        <option value="@item.Valor">@item.Descricao</option>
+                                                    }
+                                                </InputSelect>
+                                                <i class="bi bi-chevron-down input-suffix"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="rule-box span-2">
+                                    <div class="rule-box-header">
+                                        <div>
+                                            <h3>
+                                                <i class="bi bi-collection"></i>
+                                                Tipos permitidos no tabuleiro
+                                            </h3>
+                                            <span>Ative os tipos e ajuste a quantidade de cada um.</span>
+                                        </div>
+                                    </div>
+                                    <div class="type-grid">
+                                        @{
+                                            var tipos = new[]
+                                            {
+                                                ("Companhias", "bi bi-building", _permitirCompanhias, _qtdCompanhias, _maxCompanhias, "companhias"),
+                                                ("Efeitos", "bi bi-magic", _permitirEfeitos, _qtdEfeitos, _maxEfeitos, "efeitos"),
+                                                ("Especiais", "bi bi-stars", _permitirEspeciais, _qtdEspeciais, _maxEspeciais, "especiais"),
+                                                ("Impostos", "bi bi-cash-stack", _permitirImpostos, _qtdImpostos, _maxImpostos, "impostos"),
+                                                ("Prisão", "bi bi-shield-lock", _permitirPrisao, _qtdPrisao, _maxPrisao, "prisao")
+                                            };
+                                        }
+
+                                        @foreach (var (nome, icone, ativo, qtd, max, key) in tipos)
+                                        {
+                                            <div class="@(ativo ? "type-card active" : "type-card")">
+                                                <button type="button"
+                                                        class="type-card-toggle"
+                                                        @onclick="() => AlternarTipoTabuleiro(key)">
+                                                    <div class="type-card-icon">
+                                                        <i class="@icone"></i>
+                                                    </div>
+                                                    <div class="type-card-text">
+                                                        <strong>@nome</strong>
+                                                        <small>@(ativo ? "Ativado" : "Desativado")</small>
+                                                    </div>
+                                                    <i class="bi bi-check-circle-fill chip-check"></i>
+                                                </button>
+
+                                                <div class="type-card-stepper @(ativo ? "" : "disabled")">
+                                                    <button type="button"
+                                                            class="stepper-btn small"
+                                                            disabled="@(!ativo || qtd <= 0)"
+                                                            @onclick="() => AjustarQtdTipo(key, -1)">
+                                                        <i class="bi bi-dash"></i>
+                                                    </button>
+                                                    <span class="stepper-value" title="Máximo disponível: @max">
+                                                        @qtd <span style="font-size: 0.6em; color: #64748b;">/ @max</span>
+                                                    </span>
+                                                    <button type="button"
+                                                            class="stepper-btn small"
+                                                            disabled="@(!ativo || qtd >= max)"
+                                                            @onclick="() => AjustarQtdTipo(key, 1)">
+                                                        <i class="bi bi-plus"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="rule-box span-2">
+                                    <div class="rule-box-header">
+                                        <div>
+                                            <h3>
+                                                <i class="bi bi-magic"></i>
+                                                Configuração de efeitos
+                                            </h3>
+                                            <span>Define como eventos especiais serão aplicados.</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="chip-row">
+                                        <label class="@ClasseChip(_configuracao.EfeitosAleatorios)">
+                                            <InputCheckbox @bind-Value="_configuracao.EfeitosAleatorios" />
+                                            <span class="chip-content">
+                                                <strong>Efeitos aleatórios</strong>
+                                                <small>Os efeitos podem variar durante o jogo.</small>
+                                            </span>
+                                            <i class="bi bi-check-circle-fill chip-check"></i>
+                                        </label>
+
+                                        <label class="@ClasseChip(_configuracao.NaoRepetirEfeitos, !_configuracao.EfeitosAleatorios)">
+                                            <InputCheckbox @bind-Value="_configuracao.NaoRepetirEfeitos"
+                                                           disabled="@(!_configuracao.EfeitosAleatorios)" />
+                                            <span class="chip-content">
+                                                <strong>Não repetir efeitos</strong>
+                                                <small>Evita repetir o mesmo efeito em sequência.</small>
+                                            </span>
+                                            <i class="bi bi-check-circle-fill chip-check"></i>
+                                        </label>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </section>
+                    }
+
+                    @if (_abaAtual == AbaCriarJogo.Finalizacao)
+                    {
+                        <section class="setup-panel active-panel">
+                            <div class="panel-title">
+                                <div class="panel-title-icon">
+                                    <i class="bi bi-trophy"></i>
+                                </div>
+                                <div>
+                                    <h2>Finalização / Outras</h2>
+                                    <p>Defina quando o jogo termina, quem vence e regras econômicas especiais.</p>
+                                </div>
+                            </div>
+
+                            <div class="setup-grid">
+
+                                <div class="rule-box span-2">
+                                    <div class="rule-box-header">
+                                        <div>
+                                            <h3>
+                                                <i class="bi bi-flag-fill"></i>
+                                                Finalização do jogo
+                                            </h3>
+                                            <span>A regra que determina quando a partida acaba.</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="field-grid columns-2">
+                                        <div class="field span-2">
+                                            <label>Tipo de finalização</label>
+                                            <div class="input-shell">
+                                                <i class="bi bi-flag input-icon"></i>
+                                                <InputSelect class="@ClasseCampo(nameof(Configuracao.TipoFinalizacao))"
+                                                             @bind-Value="_configuracao.TipoFinalizacao">
+                                                    @foreach (var item in _tiposFinalizacao)
+                                                    {
+                                                        <option value="@item.Valor">@item.Descricao</option>
+                                                    }
+                                                </InputSelect>
+                                                <i class="bi bi-chevron-down input-suffix"></i>
+                                            </div>
+                                        </div>
+
+                                        @if (ExibirSubcriterioFinalizacao)
+                                        {
+                                            <div class="field span-2">
+                                                <label>@LabelSubcriterioFinalizacao</label>
+                                                <div class="input-shell">
+                                                    <i class="bi bi-bullseye input-icon"></i>
+                                                    <InputNumber class="@ClasseCampo(nameof(Configuracao.SubCriterioFinalizacao))"
+                                                                 @bind-Value="_configuracao.SubCriterioFinalizacao" />
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="rule-box span-2">
+                                    <div class="rule-box-header">
+                                        <div>
+                                            <h3>
+                                                <i class="bi bi-trophy-fill"></i>
+                                                Critério de vitória
+                                            </h3>
+                                            <span>Define como o vencedor será calculado.</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="field">
+                                        <label>Vence Quem</label>
+                                        <div class="input-shell">
+                                            <i class="bi bi-trophy input-icon"></i>
+                                            <InputSelect class="@ClasseCampo(nameof(Configuracao.VenceQuem))"
+                                                         @bind-Value="_configuracao.VenceQuem">
+                                                @foreach (var item in _criteriosVitoria)
+                                                {
+                                                    <option value="@item.Valor">@item.Descricao</option>
+                                                }
+                                            </InputSelect>
+                                            <i class="bi bi-chevron-down input-suffix"></i>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                @if ((VenceQuemJogo)_configuracao.VenceQuem == VenceQuemJogo.PontuacaoIndividual)
+                                {
+                                    <div class="rule-box span-2">
+                                        <div class="rule-box-header">
+                                            <div>
+                                                <h3>
+                                                    <i class="bi bi-bar-chart-fill"></i>
+                                                    Pontuações
+                                                </h3>
+                                                <span>Pesos usados para pontuação individual.</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="field-grid columns-4">
+                                            <div class="field">
+                                                <label>Mais propriedades</label>
+                                                <div class="input-shell">
+                                                    <i class="bi bi-house input-icon"></i>
+                                                    <InputNumber class="@ClasseCampo(nameof(Configuracao.PonderacaoPropriedades))"
+                                                                 @bind-Value="_configuracao.PonderacaoPropriedades" />
+                                                </div>
+                                            </div>
+
+                                            <div class="field">
+                                                <label>Número de voltas</label>
+                                                <div class="input-shell">
+                                                    <i class="bi bi-arrow-repeat input-icon"></i>
+                                                    <InputNumber class="@ClasseCampo(nameof(Configuracao.PonderacaoVoltas))"
+                                                                 @bind-Value="_configuracao.PonderacaoVoltas" />
+                                                </div>
+                                            </div>
+
+                                            <div class="field">
+                                                <label>Saldo final</label>
+                                                <div class="input-shell">
+                                                    <i class="bi bi-wallet2 input-icon"></i>
+                                                    <InputNumber class="@ClasseCampo(nameof(Configuracao.PonderacaoSaldoFinal))"
+                                                                 @bind-Value="_configuracao.PonderacaoSaldoFinal" />
+                                                </div>
+                                            </div>
+
+                                            <div class="field">
+                                                <label>Saldo total</label>
+                                                <div class="input-shell">
+                                                    <i class="bi bi-cash-stack input-icon"></i>
+                                                    <InputNumber class="@ClasseCampo(nameof(Configuracao.PonderacaoSaldoTotal))"
+                                                                 @bind-Value="_configuracao.PonderacaoSaldoTotal" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+
+                                <div class="rule-box span-2">
+                                    <div class="rule-box-header">
+                                        <div>
+                                            <h3>
+                                                <i class="bi bi-coin"></i>
+                                                Regras econômicas
+                                            </h3>
+                                            <span>Negociações, apostas, saldo e variações de preço.</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="chip-row">
+                                        <label class="@ClasseChip(_configuracao.HabilitarNegociacoes)">
+                                            <InputCheckbox @bind-Value="_configuracao.HabilitarNegociacoes" />
+                                            <span class="chip-content">
+                                                <strong>Negociações</strong>
+                                                <small>Jogadores podem negociar entre si.</small>
+                                            </span>
+                                            <i class="bi bi-check-circle-fill chip-check"></i>
+                                        </label>
+
+                                        <label class="@ClasseChip(_configuracao.HabilitarApostas)">
+                                            <InputCheckbox @bind-Value="_configuracao.HabilitarApostas" />
+                                            <span class="chip-content">
+                                                <strong>Apostas</strong>
+                                                <small>Permite apostas durante a partida.</small>
+                                            </span>
+                                            <i class="bi bi-check-circle-fill chip-check"></i>
+                                        </label>
+
+                                        <label class="@ClasseChip(_configuracao.ValorAluguelAleatorio)">
+                                            <InputCheckbox @bind-Value="_configuracao.ValorAluguelAleatorio" />
+                                            <span class="chip-content">
+                                                <strong>Aluguel aleatório</strong>
+                                                <small>O aluguel pode variar conforme regra do jogo.</small>
+                                            </span>
+                                            <i class="bi bi-check-circle-fill chip-check"></i>
+                                        </label>
+
+                                        <label class="@ClasseChip(_configuracao.ValorCompraAleatorio)">
+                                            <InputCheckbox @bind-Value="_configuracao.ValorCompraAleatorio" />
+                                            <span class="chip-content">
+                                                <strong>Compra aleatória</strong>
+                                                <small>O preço de compra pode variar.</small>
+                                            </span>
+                                            <i class="bi bi-check-circle-fill chip-check"></i>
+                                        </label>
+
+                                        <label class="@ClasseChip(_configuracao.PermitirSaldoNegativo)">
+                                            <InputCheckbox @bind-Value="_configuracao.PermitirSaldoNegativo" />
+                                            <span class="chip-content">
+                                                <strong>Saldo negativo</strong>
+                                                <small>Jogadores podem ficar devendo.</small>
+                                            </span>
+                                            <i class="bi bi-check-circle-fill chip-check"></i>
+                                        </label>
+
+                                        <label class="@ClasseChip(_configuracao.PresoBloqueiaAluguel)">
+                                            <InputCheckbox @bind-Value="_configuracao.PresoBloqueiaAluguel" />
+                                            <span class="chip-content">
+                                                <strong>Preso bloqueia aluguel</strong>
+                                                <small>Jogador preso fica sem receber aluguel.</small>
+                                            </span>
+                                            <i class="bi bi-check-circle-fill chip-check"></i>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="rule-box span-2">
+                                    <div class="rule-box-header">
+                                        <div>
+                                            <h3>
+                                                <i class="bi bi-arrow-counterclockwise"></i>
+                                                Devolução em venda
+                                            </h3>
+                                            <span>Percentual devolvido quando uma propriedade/construção for vendida.</span>
+                                        </div>
+                                        <div class="dice-preview">
+                                            <strong>@_configuracao.PercentualDevolucaoVenda%</strong>
+                                        </div>
+                                    </div>
+
+                                    <input type="range"
+                                           min="0"
+                                           max="100"
+                                           step="5"
+                                           class="game-slider accent-emerald"
+                                           value="@_configuracao.PercentualDevolucaoVenda"
+                                           style="@EstiloProgresso(_configuracao.PercentualDevolucaoVenda, 0, 100)"
+                                           @oninput="OnPercentualDevolucaoInput" />
+                                    <div class="slider-ticks">
+                                        <span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </section>
+                    }
+                </div>
+
+                <div class="setup-actions">
+                    <button type="button"
+                            class="game-button secondary"
+                            @onclick="NovoAsync"
+                            disabled="@_salvando">
+                        <i class="bi bi-arrow-clockwise"></i>
+                        <span>Reiniciar Regras</span>
+                    </button>
+
+                    <button type="submit"
+                            class="game-button primary"
+                            disabled="@_salvando">
+                        @if (_salvando)
+                        {
+                            <i class="bi bi-hourglass-split spin"></i>
+                            <span>Criando...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-play-fill"></i>
+                            <span>Criar Partida</span>
+                        }
+                    </button>
+                </div>
+
+            </section>
+        </EditForm>
+    }
+</div>
+
+
+@code {
+    private Configuracao _configuracao = new();
+
+    private List<Tabuleiros> _tabuleirosDisponiveis = new();
+
+    private int QtdCasasSelecionado =>
+        _tabuleirosDisponiveis.FirstOrDefault(t => t.TabuleiroId == _configuracao.IdTabuleiro)?.QtdCasas ?? 0;
+
+    private AbaCriarJogo _abaAtual = AbaCriarJogo.Basicas;
+    private int _limiteGeralMinDado = -10;
+    private int _limiteGeralMaxDado = 10;
+    private double _minPercentualCidades = 40.0;
+
+    private bool _carregando = true;
+    private bool _salvando;
+
+    private string? _mensagemSucesso;
+    private string? _mensagemErro;
+
+    private readonly List<string> _errosValidacao = new();
+    private readonly HashSet<string> _camposInvalidos = new();
+
+    private bool _tabuleiroAleatorio;
+    private int _numeroGrupos;
+    private int _numeroFronteiras;
+    private int _maxFronteirasTabuleiroAtual = 0; // Limite dinâmico
+
+    private bool _permitirCompanhias = true;
+    private bool _permitirEfeitos = true;
+    private bool _permitirEspeciais = true;
+    private bool _permitirImpostos = true;
+    private bool _permitirPrisao = true;
+
+    private int _qtdCompanhias;
+    private int _qtdEfeitos;
+    private int _qtdEspeciais;
+    private int _qtdImpostos;
+    private int _qtdPrisao;
+
+    private int _maxCompanhias;
+    private int _maxEfeitos;
+    private int _maxEspeciais;
+    private int _maxImpostos;
+    private int _maxPrisao;
+    private int _maxGrupos;
+
+    private string CodigoSalaDisplay =>
+        string.IsNullOrWhiteSpace(_configuracao.CodigoSala)
+            ? "Gerado ao criar"
+            : _configuracao.CodigoSala;
+
+    private readonly List<OpcaoSelect> _tiposJogo = new()
+    {
+        new((int)TipoJogoConfiguracao.Solo, EnumDescricaoHelper.ObterDescricao(TipoJogoConfiguracao.Solo)),
+        new((int)TipoJogoConfiguracao.LocalMultiplayer, EnumDescricaoHelper.ObterDescricao(TipoJogoConfiguracao.LocalMultiplayer)),
+        new((int)TipoJogoConfiguracao.Rede, EnumDescricaoHelper.ObterDescricao(TipoJogoConfiguracao.Rede))
+    };
+
+    private readonly List<OpcaoSelect> _dificuldades = new()
+    {
+        new((int)DificuldadeJogo.Facil, EnumDescricaoHelper.ObterDescricao(DificuldadeJogo.Facil)),
+        new((int)DificuldadeJogo.Normal, EnumDescricaoHelper.ObterDescricao(DificuldadeJogo.Normal)),
+        new((int)DificuldadeJogo.Dificil, EnumDescricaoHelper.ObterDescricao(DificuldadeJogo.Dificil)),
+        new((int)DificuldadeJogo.Personalizada, EnumDescricaoHelper.ObterDescricao(DificuldadeJogo.Personalizada))
+    };
+
+    private readonly List<OpcaoSelect> _regrasFronteira = new()
+    {
+        new((int)RegraFronteiraJogo.DonoDeApenasUma, EnumDescricaoHelper.ObterDescricao(RegraFronteiraJogo.DonoDeApenasUma)),
+        new((int)RegraFronteiraJogo.DonoDasDuas, EnumDescricaoHelper.ObterDescricao(RegraFronteiraJogo.DonoDasDuas))
+    };
+
+    private readonly List<OpcaoSelect> _tiposFinalizacao = new()
+    {
+        new((int)TipoFinalizacaoJogo.TodasPropriedadesCompradas, EnumDescricaoHelper.ObterDescricao(TipoFinalizacaoJogo.TodasPropriedadesCompradas)),
+        new((int)TipoFinalizacaoJogo.NumeroVoltas, EnumDescricaoHelper.ObterDescricao(TipoFinalizacaoJogo.NumeroVoltas)),
+        new((int)TipoFinalizacaoJogo.NumeroPropriedadesCompradas, EnumDescricaoHelper.ObterDescricao(TipoFinalizacaoJogo.NumeroPropriedadesCompradas)),
+        new((int)TipoFinalizacaoJogo.SaldoAcumulado, EnumDescricaoHelper.ObterDescricao(TipoFinalizacaoJogo.SaldoAcumulado)),
+        new((int)TipoFinalizacaoJogo.TempoMinutos, EnumDescricaoHelper.ObterDescricao(TipoFinalizacaoJogo.TempoMinutos)),
+        new((int)TipoFinalizacaoJogo.Ilimitado, EnumDescricaoHelper.ObterDescricao(TipoFinalizacaoJogo.Ilimitado))
+    };
+
+    private readonly List<OpcaoSelect> _criteriosVitoria = new()
+    {
+        new((int)VenceQuemJogo.MaisPropriedades, EnumDescricaoHelper.ObterDescricao(VenceQuemJogo.MaisPropriedades)),
+        new((int)VenceQuemJogo.MaiorSaldoFinal, EnumDescricaoHelper.ObterDescricao(VenceQuemJogo.MaiorSaldoFinal)),
+        new((int)VenceQuemJogo.MaiorSaldoTotal, EnumDescricaoHelper.ObterDescricao(VenceQuemJogo.MaiorSaldoTotal)),
+        new((int)VenceQuemJogo.MaiorNumeroVoltas, EnumDescricaoHelper.ObterDescricao(VenceQuemJogo.MaiorNumeroVoltas)),
+        new((int)VenceQuemJogo.PontuacaoIndividual, EnumDescricaoHelper.ObterDescricao(VenceQuemJogo.PontuacaoIndividual))
+    };
+
+    private bool ExibirSubcriterioFinalizacao =>
+        (TipoFinalizacaoJogo)_configuracao.TipoFinalizacao is
+            TipoFinalizacaoJogo.NumeroVoltas or
+            TipoFinalizacaoJogo.NumeroPropriedadesCompradas or
+            TipoFinalizacaoJogo.SaldoAcumulado or
+            TipoFinalizacaoJogo.TempoMinutos;
+
+    private string LabelSubcriterioFinalizacao =>
+        (TipoFinalizacaoJogo)_configuracao.TipoFinalizacao switch
+        {
+            TipoFinalizacaoJogo.NumeroVoltas => "Quantidade de voltas",
+            TipoFinalizacaoJogo.NumeroPropriedadesCompradas => "Quantidade de propriedades compradas",
+            TipoFinalizacaoJogo.SaldoAcumulado => "Saldo acumulado alvo",
+            TipoFinalizacaoJogo.TempoMinutos => "Tempo em minutos",
+            _ => "Subcritério"
+        };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarLimitesDoBancoAsync();
+        await NovoAsync();
+        _carregando = false;
+    }
+
+    private async Task CarregarLimitesDoBancoAsync()
+    {
+        try
+        {
+            _tabuleirosDisponiveis = await TabuleiroService.ObterTodosTabuleirosAsync();
+
+            _maxCompanhias = await TabuleiroService.ObterQuantidadeTotalPorTipoAsync("companhias");
+            _maxEfeitos = await TabuleiroService.ObterQuantidadeTotalPorTipoAsync("efeitos");
+            _maxEspeciais = await TabuleiroService.ObterQuantidadeTotalPorTipoAsync("especiais");
+            _maxImpostos = await TabuleiroService.ObterQuantidadeTotalPorTipoAsync("impostos");
+            _maxPrisao = await TabuleiroService.ObterQuantidadeTotalPorTipoAsync("prisao");
+            _maxGrupos = await TabuleiroService.ObterQuantidadeTotalPorTipoAsync("grupos_efeito");
+        }
+        catch (Exception ex)
+        {
+            _mensagemErro = "Erro ao buscar limites do tabuleiro: " + ex.Message;
+        }
+    }
+
+    // Conta no banco quantas fronteiras reais aquele tabuleiro tem
+    private async Task<int> ObterQtdFronteirasAsync(int idTabuleiro)
+    {
+        if (idTabuleiro <= 0) return 0;
+        var fronteiras = await GerenciamentoService.ObterFronteirasAsync(idTabuleiro);
+        return fronteiras?.Count ?? 0;
+    }
+
+    // Chamado sempre que o usuário muda o Tabuleiro no Dropdown
+    private async Task OnTabuleiroChangedAsync(int novoId)
+    {
+        _configuracao.IdTabuleiro = novoId;
+        _maxFronteirasTabuleiroAtual = await ObterQtdFronteirasAsync(novoId);
+
+        if (_numeroFronteiras > _maxFronteirasTabuleiroAtual)
+            _numeroFronteiras = _maxFronteirasTabuleiroAtual;
+    }
+
+    private async Task NovoAsync()
+    {
+        LimparMensagens();
+
+        _configuracao = await ConfiguracaoService.CriarConfiguracaoPadraoAsync();
+
+        _configuracao.CodigoSala = string.Empty;
+
+        if (_configuracao.IdTabuleiro <= 0 && _tabuleirosDisponiveis.Any())
+            _configuracao.IdTabuleiro = _tabuleirosDisponiveis.First().TabuleiroId;
+
+        _maxFronteirasTabuleiroAtual = await ObterQtdFronteirasAsync(_configuracao.IdTabuleiro);
+
+        if (_configuracao.TipoJogo <= 0)
+            _configuracao.TipoJogo = (int)TipoJogoConfiguracao.Solo;
+
+        if (_configuracao.Dificuldade <= 0)
+            _configuracao.Dificuldade = (int)DificuldadeJogo.Normal;
+
+        if (_configuracao.TipoFinalizacao <= 0)
+            _configuracao.TipoFinalizacao = (int)TipoFinalizacaoJogo.NumeroVoltas;
+
+        if (_configuracao.VenceQuem <= 0)
+            _configuracao.VenceQuem = (int)VenceQuemJogo.MaiorSaldoTotal;
+
+        if (_configuracao.RegraFronteira <= 0)
+            _configuracao.RegraFronteira = (int)RegraFronteiraJogo.DonoDeApenasUma;
+
+        _configuracao.StatusJogo = 1;
+
+        _tabuleiroAleatorio = false;
+        _numeroGrupos = 0;
+        _numeroFronteiras = 0;
+
+        _permitirCompanhias = true;
+        _permitirEfeitos = true;
+        _permitirEspeciais = true;
+        _permitirImpostos = true;
+        _permitirPrisao = true;
+
+        _qtdCompanhias = 0;
+        _qtdEfeitos = 0;
+        _qtdEspeciais = 0;
+        _qtdImpostos = 0;
+        _qtdPrisao = 0;
+    }
+
+    private async Task SalvarAsync(EditContext editContext)
+    {
+        LimparMensagens();
+        _salvando = true;
+
+        try
+        {
+            PrepararCamposDependentes();
+
+            if (!ValidarTela())
+                return;
+
+            var identificadorHost = await BrowserIdentificacaoService.ObterOuCriarIdentificadorAsync();
+            var nomeHost = await BrowserIdentificacaoService.ObterNomeAsync();
+
+            if (string.IsNullOrWhiteSpace(nomeHost))
+            {
+                nomeHost = "Jogador 1";
+                await BrowserIdentificacaoService.SalvarNomeAsync(nomeHost);
+            }
+
+            // Cria a base da partida
+            var resultado = await PartidaService.CriarPartidaAsync(
+                _configuracao,
+                nomeHost: nomeHost,
+                identificadorHost: identificadorHost);
+
+            try
+            {
+                // Cria as casas do tabuleiro
+                await TabuleiroService.CriarTabuleiro(
+                    resultado.IdPartida,
+                    QtdCasasSelecionado,
+                    _qtdEfeitos,
+                    _qtdPrisao,
+                    _qtdCompanhias,
+                    _qtdEspeciais,
+                    _qtdImpostos,
+                    _configuracao.EfeitosAleatorios,
+                    _numeroGrupos,
+                    _configuracao.TabuleiroOculto,
+                    _configuracao.ValorCompraAleatorio,
+                    _configuracao.ValorAluguelAleatorio);
+
+                // NOVO: Sorteia e salva as fronteiras da partida!
+                await GerenciamentoService.SortearESalvarFronteirasPartidaAsync(
+                    _configuracao.IdTabuleiro,
+                    resultado.IdPartida,
+                    _numeroFronteiras);
+            }
+            catch (Exception exTabuleiro)
+            {
+                _mensagemErro =
+                    "A partida foi criada, mas houve uma falha ao montar o tabuleiro: "
+                    + (exTabuleiro.InnerException?.Message ?? exTabuleiro.Message)
+                    + " Revise as quantidades e tente novamente.";
+                return;
+            }
+
+            NavigationManager.NavigateTo($"/jogo/lobby/{resultado.IdPartida}");
+        }
+        catch (Exception ex)
+        {
+            _mensagemErro = ex.InnerException?.Message ?? ex.Message;
+        }
+        finally
+        {
+            _salvando = false;
+        }
+    }
+
+    private string EstiloProgresso(double valor, double min, double max)
+    {
+        if (max <= min) return "--progress: 0%;";
+
+        var percent = (valor - min) / (max - min) * 100.0;
+        percent = Math.Clamp(percent, 0, 100);
+
+        return $"--progress: {percent.ToString(System.Globalization.CultureInfo.InvariantCulture)}%;";
+    }
+
+    // ========================================
+    // ALEATORIZAÇÃO
+    // ========================================
+
+    private async Task GerarTudoAleatorioAsync()
+    {
+        LimparMensagens();
+        var random = Random.Shared;
+
+        if (_tabuleirosDisponiveis.Any())
+        {
+            var tabSorteado = _tabuleirosDisponiveis[random.Next(_tabuleirosDisponiveis.Count)];
+            _configuracao.IdTabuleiro = tabSorteado.TabuleiroId;
+            _maxFronteirasTabuleiroAtual = await ObterQtdFronteirasAsync(tabSorteado.TabuleiroId);
+        }
+
+        _configuracao.QtdJogadores = random.Next(2, 9);
+        _configuracao.ValorInicial = random.Next(10, 51) * 100m;
+        _configuracao.BonusVolta = random.Next(0, 6) * 100m;
+        _configuracao.BonusAteVolta = _configuracao.BonusVolta > 0 ? random.Next(0, 21) : 0;
+
+        var minDado = random.Next(_limiteGeralMinDado, _limiteGeralMaxDado);
+        _configuracao.ValMinDado = minDado;
+        _configuracao.ValMaxDado = random.Next(minDado + 1, _limiteGeralMaxDado + 1);
+
+        _configuracao.QtdMaxCasas = random.Next(2, 7);
+        _configuracao.MinCasasParaHotel = random.Next(1, _configuracao.QtdMaxCasas + 1);
+        _configuracao.QtdMaxHoteis = random.Next(1, 3);
+        _configuracao.RemoverCasasAposHotel = random.Next(0, 2) == 1;
+
+        _configuracao.Dificuldade = random.Next(1, 4);
+
+        _tabuleiroAleatorio = true;
+        _configuracao.TabuleiroOculto = random.Next(0, 2) == 1;
+        _numeroGrupos = _maxGrupos > 0 ? random.Next(0, _maxGrupos + 1) : 0;
+
+        _numeroFronteiras = _maxFronteirasTabuleiroAtual > 0 ? random.Next(0, _maxFronteirasTabuleiroAtual + 1) : 0;
+
+        _configuracao.RegraFronteira = random.Next(1, 3);
+
+        _permitirCompanhias = true;
+        _permitirEfeitos = true;
+        _permitirEspeciais = true;
+        _permitirImpostos = true;
+        _permitirPrisao = true;
+
+        _qtdCompanhias = _maxCompanhias > 0 ? random.Next(1, _maxCompanhias + 1) : 0;
+        _qtdEfeitos = _maxEfeitos > 0 ? random.Next(1, _maxEfeitos + 1) : 0;
+        _qtdEspeciais = _maxEspeciais > 0 ? random.Next(1, _maxEspeciais + 1) : 0;
+        _qtdImpostos = _maxImpostos > 0 ? random.Next(1, _maxImpostos + 1) : 0;
+        _qtdPrisao = _maxPrisao > 0 ? random.Next(1, _maxPrisao + 1) : 0;
+
+        _configuracao.EfeitosAleatorios = true;
+        _configuracao.NaoRepetirEfeitos = random.Next(0, 2) == 1;
+
+        _configuracao.TipoFinalizacao = random.Next(1, 7);
+        _configuracao.VenceQuem = random.Next(1, 6);
+
+        if (ExibirSubcriterioFinalizacao)
+            _configuracao.SubCriterioFinalizacao = random.Next(5, 31);
+
+        if ((VenceQuemJogo)_configuracao.VenceQuem == VenceQuemJogo.PontuacaoIndividual)
+        {
+            _configuracao.PonderacaoPropriedades = random.Next(1, 11);
+            _configuracao.PonderacaoVoltas = random.Next(1, 11);
+            _configuracao.PonderacaoSaldoFinal = random.Next(1, 11);
+            _configuracao.PonderacaoSaldoTotal = random.Next(1, 11);
+        }
+
+        _configuracao.HabilitarNegociacoes = random.Next(0, 2) == 1;
+        _configuracao.HabilitarApostas = random.Next(0, 2) == 1;
+        _configuracao.ValorAluguelAleatorio = random.Next(0, 2) == 1;
+        _configuracao.ValorCompraAleatorio = random.Next(0, 2) == 1;
+        _configuracao.PermitirSaldoNegativo = random.Next(0, 2) == 1;
+        _configuracao.PresoBloqueiaAluguel = random.Next(0, 2) == 1;
+
+        _configuracao.PercentualDevolucaoVenda = random.Next(0, 21) * 5;
+
+        _mensagemSucesso = "Configuração aleatória completa gerada! Revise antes de criar.";
+    }
+
+    private async Task GerarTabuleiroAleatorioAsync()
+    {
+        LimparMensagens();
+        var random = Random.Shared;
+
+        if (_tabuleirosDisponiveis.Any())
+        {
+            var tabSorteado = _tabuleirosDisponiveis[random.Next(_tabuleirosDisponiveis.Count)];
+            _configuracao.IdTabuleiro = tabSorteado.TabuleiroId;
+            _maxFronteirasTabuleiroAtual = await ObterQtdFronteirasAsync(tabSorteado.TabuleiroId);
+        }
+
+        _tabuleiroAleatorio = true;
+        _configuracao.TabuleiroOculto = random.Next(0, 2) == 1;
+
+        _numeroGrupos = _maxGrupos > 0 ? random.Next(0, _maxGrupos + 1) : 0;
+
+        _numeroFronteiras = _maxFronteirasTabuleiroAtual > 0 ? random.Next(0, _maxFronteirasTabuleiroAtual + 1) : 0;
+
+        _configuracao.RegraFronteira = random.Next(1, 3);
+
+        _permitirCompanhias = true;
+        _permitirEfeitos = true;
+        _permitirEspeciais = true;
+        _permitirImpostos = true;
+        _permitirPrisao = true;
+
+        _qtdCompanhias = _maxCompanhias > 0 ? random.Next(1, _maxCompanhias + 1) : 0;
+        _qtdEfeitos = _maxEfeitos > 0 ? random.Next(1, _maxEfeitos + 1) : 0;
+        _qtdEspeciais = _maxEspeciais > 0 ? random.Next(1, _maxEspeciais + 1) : 0;
+        _qtdImpostos = _maxImpostos > 0 ? random.Next(1, _maxImpostos + 1) : 0;
+        _qtdPrisao = _maxPrisao > 0 ? random.Next(1, _maxPrisao + 1) : 0;
+
+        _configuracao.EfeitosAleatorios = true;
+        _configuracao.NaoRepetirEfeitos = random.Next(0, 2) == 1;
+
+        _mensagemSucesso = "Tabuleiro aleatório gerado. Revise as regras antes de criar a partida.";
+    }
+
+    // ========================================
+    // INPUT HANDLERS (sliders/steppers)
+    // ========================================
+
+    private void OnQtdJogadoresInput(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v))
+            _configuracao.QtdJogadores = v;
+    }
+
+    private void AjustarJogadores(int delta)
+    {
+        var novo = _configuracao.QtdJogadores + delta;
+
+        if (novo < 2) novo = 2;
+        if (novo > 8) novo = 8;
+
+        _configuracao.QtdJogadores = novo;
+    }
+
+    private void OnValorInicialInput(ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), out var v))
+            _configuracao.ValorInicial = v;
+    }
+
+    private void OnDadoMinInput(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var v)) return;
+
+        _configuracao.ValMinDado = v;
+        if (_configuracao.ValMaxDado < v)
+            _configuracao.ValMaxDado = v;
+    }
+
+    private void OnDadoMaxInput(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var v)) return;
+
+        if (v < _configuracao.ValMinDado)
+            v = _configuracao.ValMinDado;
+
+        _configuracao.ValMaxDado = v;
+    }
+
+    private void OnMaxCasasInput(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var v)) return;
+
+        _configuracao.QtdMaxCasas = v;
+        if (_configuracao.MinCasasParaHotel > v)
+            _configuracao.MinCasasParaHotel = v;
+    }
+
+    private void OnMinCasasHotelInput(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var v)) return;
+
+        if (v > _configuracao.QtdMaxCasas)
+            v = _configuracao.QtdMaxCasas;
+
+        _configuracao.MinCasasParaHotel = v;
+    }
+
+    private void OnMaxHoteisInput(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v))
+            _configuracao.QtdMaxHoteis = v;
+    }
+
+    private void OnNumeroGruposInput(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v))
+            _numeroGrupos = Math.Clamp(v, 0, _maxGrupos);
+    }
+
+    private void OnNumeroFronteirasInput(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v))
+            _numeroFronteiras = Math.Clamp(v, 0, _maxFronteirasTabuleiroAtual);
+    }
+
+    private void OnPercentualDevolucaoInput(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v))
+            _configuracao.PercentualDevolucaoVenda = v;
+    }
+
+    // ========================================
+    // TIPOS DO TABULEIRO (toggle + stepper)
+    // ========================================
+
+    private void AlternarTipoTabuleiro(string key)
+    {
+        switch (key)
+        {
+            case "companhias": _permitirCompanhias = !_permitirCompanhias; break;
+            case "efeitos": _permitirEfeitos = !_permitirEfeitos; break;
+            case "especiais": _permitirEspeciais = !_permitirEspeciais; break;
+            case "impostos": _permitirImpostos = !_permitirImpostos; break;
+            case "prisao": _permitirPrisao = !_permitirPrisao; break;
+        }
+    }
+
+    private void AjustarQtdTipo(string key, int delta)
+    {
+        switch (key)
+        {
+            case "companhias": _qtdCompanhias = Math.Clamp(_qtdCompanhias + delta, 0, _maxCompanhias); break;
+            case "efeitos": _qtdEfeitos = Math.Clamp(_qtdEfeitos + delta, 0, _maxEfeitos); break;
+            case "especiais": _qtdEspeciais = Math.Clamp(_qtdEspeciais + delta, 0, _maxEspeciais); break;
+            case "impostos": _qtdImpostos = Math.Clamp(_qtdImpostos + delta, 0, _maxImpostos); break;
+            case "prisao": _qtdPrisao = Math.Clamp(_qtdPrisao + delta, 0, _maxPrisao); break;
+        }
+    }
+
+    // ========================================
+    // NAVEGAÇÃO E SELEÇÃO
+    // ========================================
+
+    private void SelecionarTipoJogo(int tipoJogo)
+    {
+        _configuracao.TipoJogo = tipoJogo;
+    }
+
+    private void IrParaEntrarJogo()
+    {
+        NavigationManager.NavigateTo("jogo/entrar");
+    }
+
+    private static string ObterDescricaoTipoJogo(int tipoJogo)
+    {
+        return (TipoJogoConfiguracao)tipoJogo switch
+        {
+            TipoJogoConfiguracao.Solo => "Você contra a CPU",
+            TipoJogoConfiguracao.LocalMultiplayer => "Vários jogadores no mesmo dispositivo",
+            TipoJogoConfiguracao.Rede => "Convide amigos pela internet",
+            _ => string.Empty
+        };
+    }
+
+    // ========================================
+    // VALIDAÇÃO
+    // ========================================
+
+    private void PrepararCamposDependentes()
+    {
+        if (_configuracao.BonusVolta <= 0)
+            _configuracao.BonusAteVolta = 0;
+
+        if (!ExibirSubcriterioFinalizacao)
+            _configuracao.SubCriterioFinalizacao = null;
+
+        if ((VenceQuemJogo)_configuracao.VenceQuem != VenceQuemJogo.PontuacaoIndividual)
+        {
+            _configuracao.PonderacaoPropriedades = null;
+            _configuracao.PonderacaoVoltas = null;
+            _configuracao.PonderacaoSaldoFinal = null;
+            _configuracao.PonderacaoSaldoTotal = null;
+        }
+
+        if (!_configuracao.EfeitosAleatorios)
+            _configuracao.NaoRepetirEfeitos = false;
+
+        if (!_permitirCompanhias) _qtdCompanhias = 0;
+        if (!_permitirEfeitos) _qtdEfeitos = 0;
+        if (!_permitirEspeciais) _qtdEspeciais = 0;
+        if (!_permitirImpostos) _qtdImpostos = 0;
+        if (!_permitirPrisao) _qtdPrisao = 0;
+    }
+
+    private bool ValidarTela()
+    {
+        _errosValidacao.Clear();
+        _camposInvalidos.Clear();
+
+        if (_configuracao.QtdJogadores < 2)
+            Erro(nameof(Configuracao.QtdJogadores), "A partida precisa ter pelo menos 2 jogadores.");
+
+        if (_configuracao.ValorInicial < 0)
+            Erro(nameof(Configuracao.ValorInicial), "O valor inicial não pode ser negativo.");
+
+        if (_configuracao.BonusVolta < 0)
+            Erro(nameof(Configuracao.BonusVolta), "O bônus por volta não pode ser negativo.");
+
+        if (_configuracao.BonusAteVolta < 0)
+            Erro(nameof(Configuracao.BonusAteVolta), "O limite de bônus por volta não pode ser negativo.");
+
+        if (_configuracao.ValMinDado < _limiteGeralMinDado)
+            Erro(nameof(Configuracao.ValMinDado), $"O valor mínimo do dado não pode ser menor que {_limiteGeralMinDado}.");
+
+        if (_configuracao.ValMaxDado > _limiteGeralMaxDado)
+            Erro(nameof(Configuracao.ValMaxDado), $"O valor máximo do dado não pode ser maior que {_limiteGeralMaxDado}.");
+
+        if (_configuracao.ValMaxDado < _configuracao.ValMinDado)
+        {
+            Erro(nameof(Configuracao.ValMinDado), "O valor mínimo do dado não pode ser maior que o valor máximo.");
+            Erro(nameof(Configuracao.ValMaxDado), "O valor máximo do dado deve ser maior ou igual ao valor mínimo.");
+        }
+
+        if (_configuracao.QtdMaxCasas < 0)
+            Erro(nameof(Configuracao.QtdMaxCasas), "A quantidade máxima de casas não pode ser negativa.");
+
+        if (_configuracao.MinCasasParaHotel < 0)
+            Erro(nameof(Configuracao.MinCasasParaHotel), "A quantidade mínima de casas para hotel não pode ser negativa.");
+
+        if (_configuracao.QtdMaxCasas < _configuracao.MinCasasParaHotel)
+        {
+            Erro(nameof(Configuracao.QtdMaxCasas), "A quantidade máxima de casas não pode ser menor que o mínimo exigido para hotel.");
+            Erro(nameof(Configuracao.MinCasasParaHotel), "O mínimo de casas para hotel não pode ser maior que o máximo de casas.");
+        }
+
+        if (_configuracao.QtdMaxHoteis < 0)
+            Erro(nameof(Configuracao.QtdMaxHoteis), "A quantidade máxima de hotéis não pode ser negativa.");
+
+        if (_configuracao.RemoverCasasAposHotel && (_configuracao.QtdMaxHoteis <= 0 || _configuracao.MinCasasParaHotel <= 0))
+            Erro(nameof(Configuracao.RemoverCasasAposHotel), "Remover casas após hotel só faz sentido quando hotéis e mínimo de casas estão habilitados.");
+
+        if (ExibirSubcriterioFinalizacao && (!_configuracao.SubCriterioFinalizacao.HasValue || _configuracao.SubCriterioFinalizacao.Value <= 0))
+            Erro(nameof(Configuracao.SubCriterioFinalizacao), $"Informe um valor válido para: {LabelSubcriterioFinalizacao}.");
+
+        if (_configuracao.PercentualDevolucaoVenda < 0 || _configuracao.PercentualDevolucaoVenda > 100)
+            Erro(nameof(Configuracao.PercentualDevolucaoVenda), "O percentual de devolução em venda deve estar entre 0 e 100.");
+
+        if (_numeroGrupos < 0)
+            Erro("NumeroGrupos", "O número de grupos não pode ser negativo.");
+
+        if (_numeroFronteiras < 0 || _numeroFronteiras > _maxFronteirasTabuleiroAtual)
+            Erro("NumeroFronteiras", "O número de fronteiras é inválido ou excede o limite do tabuleiro selecionado.");
+
+        if (_configuracao.IdTabuleiro <= 0)
+            Erro(nameof(Configuracao.IdTabuleiro), "É obrigatório selecionar um tabuleiro.");
+
+        var totalOutrasCasas = _qtdCompanhias + _qtdEfeitos + _qtdEspeciais + _qtdImpostos + _qtdPrisao;
+        var qtdCidadesCalculada = QtdCasasSelecionado - totalOutrasCasas;
+
+        if (totalOutrasCasas >= QtdCasasSelecionado && QtdCasasSelecionado > 0)
+        {
+            Erro(nameof(Configuracao.IdTabuleiro), $"O tabuleiro escolhido tem {QtdCasasSelecionado} espaços, mas você selecionou {totalOutrasCasas} casas especiais. Reduza os tipos ativados.");
+        }
+        else if (QtdCasasSelecionado > 0)
+        {
+            var minCidadesExigidas = (int)Math.Ceiling(QtdCasasSelecionado * (_minPercentualCidades / 100.0));
+
+            if (qtdCidadesCalculada < minCidadesExigidas)
+            {
+                Erro(nameof(Configuracao.IdTabuleiro), $"O tabuleiro deve ter pelo menos {_minPercentualCidades}% de cidades ({minCidadesExigidas} espaços). Atualmente tem apenas {qtdCidadesCalculada}. Diminua as casas especiais.");
+            }
+        }
+
+        ValidarQuantidadeTipo(_permitirCompanhias, _qtdCompanhias, "QtdCompanhias", "Companhias");
+        ValidarQuantidadeTipo(_permitirEfeitos, _qtdEfeitos, "QtdEfeitos", "Efeitos");
+        ValidarQuantidadeTipo(_permitirEspeciais, _qtdEspeciais, "QtdEspeciais", "Especiais");
+        ValidarQuantidadeTipo(_permitirImpostos, _qtdImpostos, "QtdImpostos", "Impostos");
+        ValidarQuantidadeTipo(_permitirPrisao, _qtdPrisao, "QtdPrisao", "Prisão");
+
+        if ((VenceQuemJogo)_configuracao.VenceQuem == VenceQuemJogo.PontuacaoIndividual)
+        {
+            ValidarPonderacao(_configuracao.PonderacaoPropriedades, nameof(Configuracao.PonderacaoPropriedades), "ponderação de propriedades");
+            ValidarPonderacao(_configuracao.PonderacaoVoltas, nameof(Configuracao.PonderacaoVoltas), "ponderação de voltas");
+            ValidarPonderacao(_configuracao.PonderacaoSaldoFinal, nameof(Configuracao.PonderacaoSaldoFinal), "ponderação de saldo final");
+            ValidarPonderacao(_configuracao.PonderacaoSaldoTotal, nameof(Configuracao.PonderacaoSaldoTotal), "ponderação de saldo total");
+        }
+
+        return _errosValidacao.Count == 0;
+    }
+
+    private void ValidarQuantidadeTipo(bool permitido, int quantidade, string campo, string descricao)
+    {
+        if (permitido && quantidade < 0)
+            Erro(campo, $"A quantidade de {descricao} não pode ser negativa.");
+    }
+
+    private void ValidarPonderacao(int? valor, string campo, string descricao)
+    {
+        if (valor.HasValue && valor.Value < 0)
+            Erro(campo, $"A {descricao} não pode ser negativa.");
+    }
+
+    private void Erro(string campo, string mensagem)
+    {
+        _camposInvalidos.Add(campo);
+
+        if (!_errosValidacao.Contains(mensagem))
+            _errosValidacao.Add(mensagem);
+    }
+
+    private void LimparMensagens()
+    {
+        _mensagemSucesso = null;
+        _mensagemErro = null;
+        _errosValidacao.Clear();
+        _camposInvalidos.Clear();
+    }
+
+    // ========================================
+    // CLASSES CSS DINÂMICAS
+    // ========================================
+
+    private string ClasseCampo(string campo)
+    {
+        return _camposInvalidos.Contains(campo)
+            ? "setup-input invalid"
+            : "setup-input";
+    }
+
+    private string ClasseAba(AbaCriarJogo aba)
+    {
+        return _abaAtual == aba
+            ? "tab-button active"
+            : "tab-button";
+    }
+
+    private string ClasseTipoJogo(int tipoJogo)
+    {
+        return _configuracao.TipoJogo == tipoJogo
+            ? "mode-option active"
+            : "mode-option";
+    }
+
+    private string ClasseChip(bool ativo, bool desabilitado = false)
+    {
+        var classes = "chip-toggle";
+
+        if (ativo) classes += " active";
+        if (desabilitado) classes += " disabled";
+
+        return classes;
+    }
+
+    private static string ObterIconeTipoJogo(int tipoJogo)
+    {
+        return (TipoJogoConfiguracao)tipoJogo switch
+        {
+            TipoJogoConfiguracao.Solo => "bi bi-person-fill",
+            TipoJogoConfiguracao.LocalMultiplayer => "bi bi-people-fill",
+            TipoJogoConfiguracao.Rede => "bi bi-wifi",
+            _ => "bi bi-controller"
+        };
+    }
+
+    private int ContarErrosAba(AbaCriarJogo aba)
+    {
+        var camposBasicas = new[]
+        {
+            nameof(Configuracao.QtdJogadores), nameof(Configuracao.ValorInicial),
+            nameof(Configuracao.BonusVolta), nameof(Configuracao.BonusAteVolta),
+            nameof(Configuracao.ValMinDado), nameof(Configuracao.ValMaxDado),
+            nameof(Configuracao.QtdMaxCasas), nameof(Configuracao.MinCasasParaHotel),
+            nameof(Configuracao.QtdMaxHoteis), nameof(Configuracao.RemoverCasasAposHotel),
+            nameof(Configuracao.Dificuldade), nameof(Configuracao.RestricaoDado)
+        };
+
+        var camposTabuleiro = new[]
+        {
+            "NumeroGrupos", "NumeroFronteiras",
+            "QtdCompanhias", "QtdEfeitos", "QtdEspeciais", "QtdImpostos", "QtdPrisao",
+            nameof(Configuracao.RegraFronteira), nameof(Configuracao.IdTabuleiro)
+        };
+
+        var camposFinalizacao = new[]
+        {
+            nameof(Configuracao.TipoFinalizacao), nameof(Configuracao.SubCriterioFinalizacao),
+            nameof(Configuracao.VenceQuem), nameof(Configuracao.PercentualDevolucaoVenda),
+            nameof(Configuracao.PonderacaoPropriedades), nameof(Configuracao.PonderacaoVoltas),
+            nameof(Configuracao.PonderacaoSaldoFinal), nameof(Configuracao.PonderacaoSaldoTotal)
+        };
+
+        return aba switch
+        {
+            AbaCriarJogo.Basicas => camposBasicas.Count(c => _camposInvalidos.Contains(c)),
+            AbaCriarJogo.Tabuleiro => camposTabuleiro.Count(c => _camposInvalidos.Contains(c)),
+            AbaCriarJogo.Finalizacao => camposFinalizacao.Count(c => _camposInvalidos.Contains(c)),
+            _ => 0
+        };
+    }
+
+    private sealed record OpcaoSelect(int Valor, string Descricao);
+
+    private enum AbaCriarJogo
+    {
+        Basicas = 1,
+        Tabuleiro = 2,
+        Finalizacao = 3
+    }
+}
+

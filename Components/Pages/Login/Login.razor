@@ -1,0 +1,136 @@
+﻿@page "/Entrar"
+@namespace DllTeste.Componentes.Paginas
+
+@using DllTeste.Banco.Autenticacao
+@using DllTeste.Componentes.Menu.Enums
+@using Microsoft.AspNetCore.Http
+
+@inject LoginOptions Opcoes
+
+@*
+    Tela de login padrão (STATIC SSR — não marcar como InteractiveServer).
+*@
+
+<HeadContent>
+    <link rel="stylesheet" href="_content/DllTeste/css/dllteste-login.css" />
+</HeadContent>
+
+<div class="dll-login @ClasseTema">
+    <div class="dll-login-card">
+
+        @if (!string.IsNullOrWhiteSpace(Opcoes.UrlLogo))
+        {
+            <img class="dll-login-logo" src="@Opcoes.UrlLogo" alt="Logo" />
+        }
+
+        <h1 class="dll-login-titulo">@Opcoes.Titulo</h1>
+
+        @if (!string.IsNullOrWhiteSpace(Opcoes.Subtitulo))
+        {
+            <p class="dll-login-subtitulo">@Opcoes.Subtitulo</p>
+        }
+
+        @if (MensagemErro is not null)
+        {
+            <div class="dll-login-erro" role="alert">
+                <i class="bi bi-exclamation-circle"></i>
+                <span>@MensagemErro</span>
+            </div>
+        }
+
+        <form method="post" action="/account/login" data-enhance="false" class="dll-login-form">
+            <AntiforgeryToken />
+            <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+
+            <div class="dll-login-campo">
+                <label class="dll-login-label" for="dll-login-usuario">E-mail ou usuário</label>
+                <div class="dll-login-input-wrap">
+                    <i class="bi bi-person dll-login-icone"></i>
+                    <input id="dll-login-usuario" name="usuario" type="text"
+                           autocomplete="username" placeholder="seu.usuario ou e-mail"
+                           required autofocus />
+                </div>
+            </div>
+
+            <div class="dll-login-campo">
+                <label class="dll-login-label" for="dll-login-senha">Senha</label>
+                <div class="dll-login-input-wrap">
+                    <i class="bi bi-lock dll-login-icone"></i>
+                    <input id="dll-login-senha" name="senha" type="password"
+                           autocomplete="current-password" placeholder="••••••••" required />
+                    <button type="button" class="dll-login-toggle"
+                            aria-label="Mostrar senha" onclick="dllLoginAlternarSenha(this)">
+                        <i class="bi bi-eye"></i>
+                    </button>
+                </div>
+            </div>
+
+            <label class="dll-login-lembrar">
+                <input type="checkbox" name="lembrar" value="true" />
+                <span>Lembrar-me</span>
+            </label>
+
+            <button type="submit" class="dll-login-botao">
+                <i class="bi bi-box-arrow-in-right"></i>
+                <span>Entrar</span>
+            </button>
+        </form>
+    </div>
+</div>
+
+@code {
+    [Parameter] public TemaSistema? Tema { get; set; }
+
+    [SupplyParameterFromQuery] public string? Error { get; set; }
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+
+    private string? MensagemErro;
+    private TemaSistema _tema;
+
+    protected override void OnParametersSet()
+    {
+        _tema = ResolverTema();
+
+        switch (Error)
+        {
+            case "credenciais":
+                MensagemErro = "Usuário ou senha inválidos.";
+                break;
+            case "campos":
+                MensagemErro = "Preencha o usuário e a senha.";
+                break;
+            case "token":
+                MensagemErro = "Sua sessão expirou. Tente novamente.";
+                break;
+            default:
+                MensagemErro = null;
+                break;
+        }
+    }
+
+    private TemaSistema ResolverTema()
+    {
+        string? cookie = HttpContext?.Request.Cookies[Opcoes.NomeCookieTema];
+
+        if (!string.IsNullOrWhiteSpace(cookie))
+        {
+            if (cookie.Equals("escuro", StringComparison.OrdinalIgnoreCase))
+                return TemaSistema.Escuro;
+
+            if (cookie.Equals("claro", StringComparison.OrdinalIgnoreCase))
+                return TemaSistema.Claro;
+        }
+
+        if (Tema.HasValue)
+            return Tema.Value;
+
+        return Opcoes.TemaPadrao;
+    }
+
+    private string ClasseTema =>
+        _tema == TemaSistema.Escuro
+            ? "dll-login-tema-escuro"
+            : "dll-login-tema-claro";
+}

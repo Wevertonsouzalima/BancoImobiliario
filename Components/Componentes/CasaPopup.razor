@@ -1,0 +1,374 @@
+﻿@using BancoImobiliario.Models.Jogo
+@using System.Globalization
+
+@if (Visivel && Dados is not null)
+{
+    <div class="casa-popup-overlay" @onclick="FecharAsync">
+        <div class="casa-popup" @onclick:stopPropagation="true">
+
+            <div class="casa-popup-header"
+                 style="@(string.IsNullOrWhiteSpace(Dados.CorHexadecimal) ? "" : $"border-color:{Dados.CorHexadecimal};")">
+                <span><i class="bi bi-geo-alt-fill"></i> Dados da Casa</span>
+                <button type="button" class="casa-popup-close" @onclick="FecharAsync">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+
+            <div class="casa-popup-body">
+
+                @if (Dados.Visibilidade == VisibilidadeCasa.Oculta)
+                {
+                    <div class="casa-oculta">
+                        <i class="bi bi-question-lg"></i>
+                        <span>Casa ainda não revelada</span>
+                    </div>
+                }
+                else if (Dados.Visibilidade == VisibilidadeCasa.SomentePreco)
+                {
+                    <div class="casa-venda">
+                        <span class="casa-venda-tag"><i class="bi bi-tag-fill"></i> Propriedade à venda</span>
+                        <div class="casa-venda-valor">@Moeda(Dados.ValorCompra)</div>
+
+                        <div class="casa-popup-acoes">
+                            <button type="button" class="casa-btn primary"
+                                    disabled="@(!PodeComprar)"
+                                    @onclick="ComprarAsync">
+                                <i class="bi bi-cart-plus"></i> Comprar
+                            </button>
+                            <button type="button" class="casa-btn secondary" @onclick="FecharAsync">
+                                <i class="bi bi-skip-forward"></i> Passar
+                            </button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="casa-linha titulo">
+                        <span class="casa-nome">@Dados.Nome</span>
+                        <span class="casa-pos">Posição @Dados.Posicao</span>
+                    </div>
+
+                    <div class="casa-linha">
+                        <span><i class="bi bi-person-badge"></i> Proprietário</span>
+                        <strong>@Dados.NomeProprietario</strong>
+                    </div>
+
+                    <div class="casa-linha">
+                        <span><i class="bi bi-cash"></i> Valor de compra</span>
+                        <strong>@Moeda(Dados.ValorCompra)</strong>
+                    </div>
+
+                    <div class="casa-linha">
+                        <span><i class="bi bi-house-door"></i> Valor do aluguel</span>
+                        <strong>@Moeda(Dados.ValorAluguel)</strong>
+                    </div>
+
+                    <div class="casa-linha">
+                        <span><i class="bi bi-bricks"></i> Adicionar casa</span>
+                        <strong>@Moeda(Dados.CustoCasa)</strong>
+                    </div>
+
+                    <div class="casa-linha">
+                        <span><i class="bi bi-building"></i> Adicionar hotel</span>
+                        <strong>@Moeda(Dados.CustoHotel)</strong>
+                    </div>
+
+                    <div class="casa-linha">
+                        <span><i class="bi bi-houses"></i> Construções</span>
+                        <strong>@Dados.QtdCasas casa(s) · @Dados.QtdHoteis hotel(éis)</strong>
+                    </div>
+
+                    @if (Dados.GrupoId is not null)
+                    {
+                        <div class="casa-sep"></div>
+
+                        <div class="casa-linha">
+                            <span><i class="bi bi-collection"></i> Grupo</span>
+                            <strong>@Dados.GrupoId</strong>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(Dados.DescricaoEfeitoGrupo))
+                        {
+                            <div class="casa-efeito">
+                                <i class="bi bi-magic"></i>
+                                <span>@Dados.DescricaoEfeitoGrupo</span>
+                            </div>
+                        }
+                    }
+
+                    @if (Dados.Fronteiras.Count > 0)
+                    {
+                        <div class="casa-sep"></div>
+
+                        @foreach (var f in Dados.Fronteiras)
+                        {
+                            <div class="casa-fronteira">
+                                <div class="casa-fronteira-rota">
+                                    <i class="bi bi-signpost-split"></i>
+                                    Fronteira para a posição @f.PosicaoDestino
+                                </div>
+                                <div class="casa-linha sub">
+                                    <span>Custo de travessia</span>
+                                    <strong>@Moeda(f.ValorTravessia)</strong>
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(f.DescricaoEfeitoRequerido))
+                                {
+                                    <div class="casa-linha sub">
+                                        <span>Requer efeito</span>
+                                        <strong>@f.DescricaoEfeitoRequerido</strong>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public DadosCasaPopup? Dados { get; set; }
+    [Parameter] public bool Visivel { get; set; }
+
+    /// <summary>Habilita o botão Comprar no modo "somente preço" (ex.: saldo suficiente).</summary>
+    [Parameter] public bool PodeComprar { get; set; } = true;
+
+    [Parameter] public EventCallback OnFechar { get; set; }
+    [Parameter] public EventCallback OnComprar { get; set; }
+
+    private async Task FecharAsync()
+    {
+        if (OnFechar.HasDelegate)
+            await OnFechar.InvokeAsync();
+    }
+
+    private async Task ComprarAsync()
+    {
+        if (OnComprar.HasDelegate)
+            await OnComprar.InvokeAsync();
+    }
+
+    private static string Moeda(decimal? valor)
+        => (valor ?? 0m).ToString("C", CultureInfo.GetCultureInfo("pt-BR"));
+}
+
+<style>
+    .casa-popup-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(2, 6, 23, 0.72);
+        backdrop-filter: blur(3px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1200;
+        padding: 1rem;
+    }
+
+    .casa-popup {
+        width: 100%;
+        max-width: 420px;
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        border-radius: 16px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+        overflow: hidden;
+        animation: casaPopupIn 0.16s ease-out;
+    }
+
+    @@keyframes casaPopupIn {
+        from {
+            opacity: 0;
+            transform: translateY(12px) scale(0.98);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    .casa-popup-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.85rem 1.1rem;
+        background: #0b1120;
+        border-bottom: 3px solid #334155;
+        color: #e2e8f0;
+        font-weight: 600;
+    }
+
+    .casa-popup-close {
+        background: transparent;
+        border: none;
+        color: #94a3b8;
+        cursor: pointer;
+        font-size: 1rem;
+        padding: 0.25rem;
+        border-radius: 8px;
+    }
+
+        .casa-popup-close:hover {
+            color: #f1f5f9;
+            background: #1e293b;
+        }
+
+    .casa-popup-body {
+        padding: 1rem 1.1rem 1.2rem;
+        color: #e2e8f0;
+    }
+
+    .casa-linha {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.45rem 0;
+        font-size: 0.92rem;
+    }
+
+        .casa-linha > span {
+            color: #94a3b8;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+        }
+
+        .casa-linha.sub {
+            padding: 0.25rem 0;
+            font-size: 0.85rem;
+        }
+
+        .casa-linha.titulo {
+            padding-bottom: 0.75rem;
+        }
+
+    .casa-nome {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #f8fafc;
+    }
+
+    .casa-pos {
+        font-size: 0.78rem;
+        color: #64748b;
+    }
+
+    .casa-sep {
+        height: 1px;
+        background: #1e293b;
+        margin: 0.6rem 0;
+    }
+
+    .casa-efeito {
+        display: flex;
+        gap: 0.55rem;
+        background: #1e293b;
+        border-radius: 10px;
+        padding: 0.65rem 0.8rem;
+        margin-top: 0.4rem;
+        font-size: 0.88rem;
+        color: #cbd5e1;
+    }
+
+        .casa-efeito i {
+            color: #a78bfa;
+            margin-top: 0.1rem;
+        }
+
+    .casa-fronteira {
+        background: rgba(245, 158, 11, 0.08);
+        border: 1px solid rgba(245, 158, 11, 0.3);
+        border-radius: 10px;
+        padding: 0.6rem 0.8rem;
+        margin-top: 0.5rem;
+    }
+
+    .casa-fronteira-rota {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        color: #fbbf24;
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .casa-oculta {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 1.6rem 0;
+        color: #64748b;
+    }
+
+        .casa-oculta i {
+            font-size: 2.2rem;
+        }
+
+    .casa-venda {
+        text-align: center;
+        padding: 0.6rem 0 0.2rem;
+    }
+
+    .casa-venda-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        color: #94a3b8;
+        font-size: 0.85rem;
+    }
+
+    .casa-venda-valor {
+        font-size: 2rem;
+        font-weight: 800;
+        color: #f8fafc;
+        margin: 0.4rem 0 1rem;
+    }
+
+    .casa-popup-acoes {
+        display: flex;
+        gap: 0.6rem;
+    }
+
+    .casa-btn {
+        flex: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.45rem;
+        padding: 0.65rem 0.9rem;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        border: 1px solid transparent;
+        font-size: 0.92rem;
+    }
+
+        .casa-btn.primary {
+            background: #10b981;
+            color: #04231a;
+        }
+
+            .casa-btn.primary:hover:not(:disabled) {
+                background: #34d399;
+            }
+
+            .casa-btn.primary:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+
+        .casa-btn.secondary {
+            background: #1e293b;
+            color: #cbd5e1;
+            border-color: #334155;
+        }
+
+            .casa-btn.secondary:hover {
+                background: #273449;
+            }
+</style>
