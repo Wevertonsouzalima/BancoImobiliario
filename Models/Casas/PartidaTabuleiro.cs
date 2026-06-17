@@ -33,7 +33,7 @@ namespace BancoImobiliario.Models.Casas
 
         public int? GrupoId { get; set; }
 
-        public int? ProprietarioId { get; set; }
+        public int ProprietarioId { get; set; }
 
         public int QtdCasas { get; set; } = 0;
 

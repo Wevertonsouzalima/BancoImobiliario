@@ -23,7 +23,14 @@ namespace BancoImobiliario.Models.Casas
         [Column(TypeName = "decimal(18, 2)")]
         public decimal? PorcValor { get; set; }
 
-        public bool RegraEspecial { get; set; }
+        /// <summary>
+        /// 0 = normal (sem regra especial). Acima de zero identifica a regra:
+        /// 1 = Business (soma dos aluguéis das outras companhias),
+        /// 2 = Internet (aluguel = dado x FatorMultiplicador),
+        /// 3 = Xerox (copia o aluguel de outra propriedade).
+        /// Ver enum RegraEspecialCompanhia.
+        /// </summary>
+        public int RegraEspecial { get; set; }
 
         [StringLength(250)]
         public string? Imagem { get; set; }

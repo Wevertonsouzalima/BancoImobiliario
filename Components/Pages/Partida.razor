@@ -15,6 +15,7 @@
 @inject TabuleiroService TabuleiroService
 @inject AcaoCasaService AcaoCasaService
 @inject NavigationManager NavigationManager
+@inject IJSRuntime JS
 
 <PageTitle>Partida - Tabuleiro</PageTitle>
 
@@ -48,8 +49,8 @@
                 {
                     var casa = celula.Casa;
                     var mostrar = casa.IsRevelada || _debug;
-                    <div class="casa @(!casa.IsRevelada && _debug ? "casa-debug" : "")"
-                         style="grid-column:@(celula.Coluna + 1); grid-row:@(celula.Linha + 1);"
+                    <div class="casa @(!casa.IsRevelada && _debug ? "casa-debug" : "") @(TemPeao(casa.Posicao) ? "tem-peao" : "")"
+                         style="grid-column:@(celula.Coluna + 1); grid-row:@(celula.Linha + 1); @EstiloPeoes(casa.Posicao)"
                          title="@(mostrar ? $"{casa.Nome} ({casa.TipoCasaDescricao})" : "Casa não revelada")"
                          @onclick="() => InspecionarCasaAsync(casa.Posicao)">
 
@@ -79,6 +80,21 @@
                                 @casa.Posicao
                             </span>
                         }
+
+                        @* peões: bolinhas com a cor de cada jogador presente na casa *@
+                        @{
+                            var peoesAqui = _posicoesJogadores.Where(p => p.Posicao == casa.Posicao).ToList();
+                        }
+                        @if (peoesAqui.Count > 0)
+                        {
+                            <div class="casa-peoes">
+                                @foreach (var peao in peoesAqui)
+                                {
+                                    <span class="peao" style="background-color:@(string.IsNullOrWhiteSpace(peao.CorHex) ? CorNeutra : peao.CorHex);"
+                                          title="@peao.NomeJogador"></span>
+                                }
+                            </div>
+                        }
                     </div>
                 }
             </div>
@@ -96,6 +112,12 @@
                         <h1>@(_lobby?.CodigoSala ?? "")</h1>
                     </div>
                     <div class="painel-cabecalho-dir">
+                        @if (_vezDe is not null)
+                        {
+                            <span class="vez-badge" title="Jogador da vez">
+                                <i class="bi bi-person-fill"></i> Vez de @_vezDe.NomeJogador
+                            </span>
+                        }
                         @if (_debug)
                         {
                             <span class="debug-badge" title="Modo debug ativo: casas reveladas para teste">
@@ -120,6 +142,17 @@
                         <span class="simulacao-msg">@_msgSimulacao</span>
                     }
                 </div>
+
+                @if (!string.IsNullOrWhiteSpace(_avisoBusiness))
+                {
+                    <div class="aviso-business">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        <span>@_avisoBusiness</span>
+                        <button type="button" @onclick="@(() => _avisoBusiness = null)" title="Fechar">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                }
 
                 <div class="painel-tabs">
                     <button type="button"
@@ -171,7 +204,7 @@
                                         <dt>Volta</dt>
                                         <dd>@(_estadoJogador?.VoltasCompletadas ?? 0)</dd>
                                         <dt>Propriedades</dt>
-                                        <dd>0</dd>
+                                        <dd>@_qtdPropriedades</dd>
                                     </dl>
                                 }
                                 else
@@ -182,7 +215,7 @@
 
                             @* sub-painel: efeitos + grupo (só aparece se houver algo a mostrar) *@
                             @{
-                                var temEfeitos = false; // TODO: ligar à relação jogador↔efeitos quando existir
+                                var temEfeitos = _efeitosAtivos.Count > 0;
                                 var temGrupos = _gruposCompletos.Count > 0;
                             }
                             @if (temEfeitos || temGrupos)
@@ -194,7 +227,17 @@
                                         <div class="status-secao">
                                             <h4>Efeitos</h4>
                                             <div class="badges">
-                                                @* TODO: renderizar apenas os efeitos que o jogador possui *@
+                                                @foreach (var ef in _efeitosAtivos)
+                                                {
+                                                    <span class="badge badge-efeito" title="@ef.Frase">
+                                                        <i class="bi @ef.Icone"></i>
+                                                        @ef.Rotulo
+                                                        @if (ef.RemoverAposVolta)
+                                                        {
+                                                            <span class="badge-tag">até a volta</span>
+                                                        }
+                                                    </span>
+                                                }
                                             </div>
                                         </div>
                                     }
@@ -233,17 +276,33 @@
                                 <table class="tabela-propriedades">
                                     <thead>
                                         <tr>
-                                            <th>Vender</th>
                                             <th>Cidade</th>
                                             <th>Casas</th>
                                             <th>Hoteis</th>
+                                            <th>Aluguel</th>
                                             <th>Grupo</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr class="vazio">
-                                            <td colspan="5">Voce ainda nao possui propriedades.</td>
-                                        </tr>
+                                        @if (_minhasPropriedades.Count == 0)
+                                        {
+                                            <tr class="vazio">
+                                                <td colspan="5">Voce ainda nao possui propriedades.</td>
+                                            </tr>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var prop in _minhasPropriedades)
+                                            {
+                                                <tr>
+                                                    <td>@prop.Nome</td>
+                                                    <td>@prop.QtdCasas</td>
+                                                    <td>@prop.QtdHoteis</td>
+                                                    <td>R$ @((prop.ValorAluguelAtual ?? 0m).ToString("N2"))</td>
+                                                    <td>@(prop.GrupoId?.ToString() ?? "-")</td>
+                                                </tr>
+                                            }
+                                        }
                                     </tbody>
                                 </table>
                             </div>
@@ -303,6 +362,345 @@
             </aside>
 
         </div>
+
+        @* Modal de dado do turno (animação de rolagem) *@
+        <DadoModal @ref="_dadoModal"
+                   TituloModal="@_tituloDado"
+                   MinValor="@(_config?.ValMinDado ?? 1)"
+                   MaxValor="@(_config?.ValMaxDado ?? 6)"
+                   NumerosRestritos="_numerosRestritosDado"
+                   ObterResultadoServidor="RolarDadoTurnoNoServidorAsync"
+                   AoConfirmar="OnDadoTurnoConfirmado" />
+
+        @* Modal de IMUNIDADE (efeito guardado consumido: prisão/imposto/efeito/aluguel) *@
+        @if (_modalImunidadeAberto)
+        {
+            <div class="modal-overlay" @onclick="FecharModalImunidade">
+                <div class="modal-bonus modal-imunidade" @onclick:stopPropagation="true">
+                    <div class="bonus-icone imunidade-icone"><i class="bi @_imunidadeIcone"></i></div>
+                    <h3>@_imunidadeTitulo</h3>
+                    <p>@_imunidadeFrase</p>
+                    <button type="button" class="modal-bonus-ok imunidade-btn" @onclick="FecharModalImunidade">
+                        <i class="bi bi-check-lg"></i> Entendi
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* Modal "COMPRA BLOQUEADA" — efeito de bloqueio consumido ao tentar comprar *@
+        @if (_modalCompraBloqueadaAberto)
+        {
+            <div class="modal-overlay" @onclick="FecharModalCompraBloqueada">
+                <div class="modal-bonus modal-bloqueio" @onclick:stopPropagation="true">
+                    <div class="bonus-icone bloqueio-icone"><i class="bi bi-slash-circle"></i></div>
+                    <h3>Compra bloqueada!</h3>
+                    <p>Um efeito impediu esta compra. A propriedade não foi adquirida e o efeito será consumido ao finalizar a jogada.</p>
+                    <button type="button" class="modal-bonus-ok bloqueio-btn" @onclick="FecharModalCompraBloqueada">
+                        <i class="bi bi-check-lg"></i> Entendi
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* Modal TROCAR GRUPO de propriedade (efeito 17): cidade + grupo *@
+        @if (_modalTrocaGrupoAberto)
+        {
+            <div class="modal-overlay">
+                <div class="modal-bonus modal-trocagrupo" @onclick:stopPropagation="true">
+                    <div class="bonus-icone trocagrupo-icone"><i class="bi bi-diagram-3"></i></div>
+                    <h3>Trocar grupo</h3>
+                    <p>Escolha a propriedade e o novo grupo:</p>
+
+                    <div class="tg-colunas">
+                        <div class="tg-coluna">
+                            <h4>Propriedade</h4>
+                            <div class="tg-lista">
+                                @foreach (var c in _cidadesGrupo)
+                                {
+                                    <button type="button"
+                                            class="tg-item @(_trocaGrupoCidade?.PartidaTabuleiroId == c.PartidaTabuleiroId ? "tg-sel" : "")"
+                                            @onclick="() => SelecionarCidadeGrupo(c)">
+                                        <span class="tg-cor" style="background-color:@(c.CorHexadecimal ?? "#475569");"></span>
+                                        <span class="tg-nome">@c.Nome</span>
+                                        @if (c.GrupoId is not null)
+                                        {
+                                            <span class="tg-grupoatual">G@(c.GrupoId)</span>
+                                        }
+                                    </button>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="tg-coluna">
+                            <h4>Novo grupo</h4>
+                            <div class="tg-lista">
+                                @foreach (var g in _gruposTabuleiro)
+                                {
+                                    <button type="button"
+                                            class="tg-item @(_trocaGrupoNovo == g.GrupoId ? "tg-sel" : "")"
+                                            @onclick="() => SelecionarNovoGrupo(g.GrupoId)">
+                                        <span class="tg-cor" style="background-color:@(g.Cor ?? "#475569");"></span>
+                                        <span class="tg-nome">
+                                            <strong>Grupo @g.GrupoId</strong>
+                                            @if (!string.IsNullOrWhiteSpace(g.Frase))
+                                            {
+                                                <small>@g.Frase</small>
+                                            }
+                                        </span>
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="troca-botoes">
+                        <button type="button" class="modal-bonus-ok troca-confirmar"
+                                disabled="@(_trocaGrupoCidade is null || _trocaGrupoNovo is null)"
+                                @onclick="ConfirmarTrocaGrupoAsync">
+                            <i class="bi bi-check-lg"></i> Confirmar troca
+                        </button>
+                        <button type="button" class="modal-bonus-ok troca-cancelar" @onclick="CancelarTrocaGrupo">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* Modal ESCOLHER jogador para trocar de casa (3+ jogadores) *@
+        @if (_modalTrocaEscolhaAberto)
+        {
+            <div class="modal-overlay">
+                <div class="modal-bonus modal-troca" @onclick:stopPropagation="true">
+                    <div class="bonus-icone troca-icone"><i class="bi bi-arrow-left-right"></i></div>
+                    <h3>Trocar de casa</h3>
+                    <p>Escolha com quem você quer trocar de lugar:</p>
+                    <div class="troca-lista">
+                        @foreach (var j in _jogadoresTroca)
+                        {
+                            <button type="button" class="troca-item" @onclick="() => SelecionarAlvoTroca(j)">
+                                <span class="troca-nome">
+                                    <i class="bi @(j.EhBot ? "bi-robot" : "bi-person-fill")"></i>
+                                    @j.NomeJogador
+                                </span>
+                                <span class="troca-pos">Casa @j.PosicaoAtual</span>
+                            </button>
+                        }
+                    </div>
+                    <button type="button" class="modal-bonus-ok troca-cancelar" @onclick="CancelarTroca">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* Modal CONFIRMAR troca direta (2 jogadores) *@
+        @if (_modalTrocaConfirmarAberto && _trocaAlvo is not null)
+        {
+            <div class="modal-overlay">
+                <div class="modal-bonus modal-troca" @onclick:stopPropagation="true">
+                    <div class="bonus-icone troca-icone"><i class="bi bi-arrow-left-right"></i></div>
+                    <h3>Trocar de casa</h3>
+                    <p>Trocar de lugar com <strong>@_trocaAlvo.NomeJogador</strong> (casa @_trocaAlvo.PosicaoAtual)?</p>
+                    <div class="troca-botoes">
+                        <button type="button" class="modal-bonus-ok troca-confirmar" @onclick="ConfirmarTrocaAsync">
+                            <i class="bi bi-check-lg"></i> Trocar
+                        </button>
+                        <button type="button" class="modal-bonus-ok troca-cancelar" @onclick="CancelarTroca">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* Modal de EFEITO (frase do efeito sorteado) *@
+        @if (_modalEfeitoAberto)
+        {
+            <div class="modal-overlay" @onclick="FecharModalEfeito">
+                <div class="modal-bonus modal-efeito" @onclick:stopPropagation="true">
+                    <div class="bonus-icone efeito-icone"><i class="bi bi-stars"></i></div>
+                    <h3>Efeito!</h3>
+                    <p>@_efeitoFrase</p>
+                    <button type="button" class="modal-bonus-ok efeito-btn" @onclick="FecharModalEfeito">
+                        <i class="bi bi-check-lg"></i> Entendi
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* Modal de IMPOSTO (frase + valor; ou rola dado para definir) *@
+        @if (_modalImpostoAberto)
+        {
+            <div class="modal-overlay">
+                <div class="modal-bonus" @onclick:stopPropagation="true" style="border-color:rgba(248,113,113,.45);">
+                    <div class="bonus-icone" style="color:#f87171;"><i class="bi bi-cash-stack"></i></div>
+                    <h3 style="color:#fca5a5;">@_impostoNome</h3>
+                    <p>@_impostoFrase</p>
+                    @if (_rolandoDadoImposto)
+                    {
+                        <div class="bonus-valor" style="color:#fca5a5;">Role o dado...</div>
+                    }
+                    else
+                    {
+                        <div class="bonus-valor" style="color:#fca5a5;">R$ @_impostoValor.ToString("N2")</div>
+                        <button type="button" class="modal-bonus-ok" style="background:linear-gradient(135deg,#dc2626,#ef4444); color:white;"
+                                @onclick="ConfirmarPagamentoImpostoAsync">
+                            <i class="bi bi-cash-coin"></i> Pagar imposto
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+
+        @* Modal de PRISÃO (frase + rodadas; ou rola dado para definir) *@
+        @if (_modalPrisaoAberto)
+        {
+            <div class="modal-overlay">
+                <div class="modal-bonus" @onclick:stopPropagation="true" style="border-color:rgba(148,163,184,.45);">
+                    <div class="bonus-icone" style="color:#94a3b8;"><i class="bi bi-lock-fill"></i></div>
+                    <h3 style="color:#cbd5e1;">@_prisaoNome</h3>
+                    <p>@_prisaoFrase</p>
+                    @if (_rolandoDadoPrisao)
+                    {
+                        <div class="bonus-valor" style="color:#cbd5e1;">Role o dado...</div>
+                    }
+                    else if (_prisaoModoContador)
+                    {
+                        @* contador: a frase já informa quantas faltam; só fecha *@
+                        <button type="button" class="modal-bonus-ok" style="background:rgba(148,163,184,.25); color:#e5e7eb;"
+                                @onclick="FecharModalPrisao">
+                            <i class="bi bi-check-lg"></i> Entendi
+                        </button>
+                    }
+                    else
+                    {
+                        <div class="bonus-valor" style="color:#cbd5e1;">@_prisaoRodadas rodada(s) preso</div>
+                        <button type="button" class="modal-bonus-ok" style="background:rgba(148,163,184,.25); color:#e5e7eb;"
+                                @onclick="FecharModalPrisao">
+                            <i class="bi bi-check-lg"></i> Entendi
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+
+        @* Modal "A LIBERDADE CANTOU!" — ao cumprir a pena *@
+        @if (_modalLiberdadeAberto)
+        {
+            <div class="modal-overlay" @onclick="FecharModalLiberdade">
+                <div class="modal-bonus modal-liberdade" @onclick:stopPropagation="true">
+                    <div class="bonus-icone liberdade-icone"><i class="bi bi-unlock-fill"></i></div>
+                    <h3>A liberdade cantou! 🕊️</h3>
+                    <p>Você cumpriu sua pena e está livre. Jogue o dado e boa sorte!</p>
+                    <button type="button" class="modal-bonus-ok liberdade-btn" @onclick="FecharModalLiberdade">
+                        <i class="bi bi-dice-5-fill"></i> Jogar
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* Modal de confirmação da XEROX (misteriosa, valor fixo, opcional) *@
+        @if (_modalXeroxAberto)
+        {
+            <div class="modal-overlay" @onclick="FecharModalXerox">
+                <div class="modal-bonus" @onclick:stopPropagation="true" style="border-color:rgba(96,165,250,.4);">
+                    <div class="bonus-icone" style="color:#60a5fa;"><i class="bi bi-question-lg"></i></div>
+                    <h3 style="color:#93c5fd;">Companhia misteriosa</h3>
+                    <p>Deseja comprar esta companhia? Você só vai descobrir o que ela faz depois de comprar!</p>
+                    <div class="bonus-valor" style="color:#93c5fd;">R$ @_xeroxPreco.ToString("N2")</div>
+                    <div style="display:flex; gap:.6rem;">
+                        <button type="button" class="modal-bonus-ok" style="background:rgba(148,163,184,.2); color:#e5e7eb;"
+                                @onclick="FecharModalXerox">
+                            Não comprar
+                        </button>
+                        <button type="button" class="modal-bonus-ok" style="background:linear-gradient(135deg,#2563eb,#3b82f6); color:white;"
+                                @onclick="ConfirmarCompraXeroxAsync">
+                            <i class="bi bi-cash-coin"></i> Comprar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* Modal GENÉRICO de seleção de propriedade (Xerox copiar, etc.) *@
+        <ModalSelecaoPropriedade @ref="_modalSelecao"
+                                 Titulo="@_selecaoTitulo"
+                                 Subtitulo="@_selecaoSubtitulo"
+                                 TextoBotao="@_selecaoTextoBotao"
+                                 Itens="_itensSelecao"
+                                 FiltroPermitido="@_selecaoFiltro"
+                                 PermiteCancelar="false"
+                                 AoSelecionar="OnPropriedadeSelecionadaXerox" />
+
+        @* Modal de compra de companhia normal (valor livre + preview do aluguel) *@
+        <ModalComprarCompanhia @ref="_modalCompanhia"
+                               AoComprar="OnCompanhiaCompradaAsync" />
+
+        @* Modal da BUSINESS (aquisição grátis, se tem todas as outras companhias) *@
+        @if (_modalBusinessAberto)
+        {
+            <div class="modal-overlay" @onclick="FecharModalBusiness">
+                <div class="modal-bonus" @onclick:stopPropagation="true" style="border-color:rgba(96,165,250,.4);">
+                    <div class="bonus-icone" style="color:#60a5fa;"><i class="bi bi-briefcase-fill"></i></div>
+                    <h3 style="color:#93c5fd;">@_businessNome</h3>
+                    <p>Você é dono de todas as outras companhias e pode adquirir esta de graça!</p>
+                    <div class="bonus-valor" style="color:#93c5fd;">Aluguel: R$ @_businessAluguel.ToString("N2")</div>
+                    <div style="display:flex; gap:.6rem;">
+                        <button type="button" class="modal-bonus-ok" style="background:rgba(148,163,184,.2); color:#e5e7eb;"
+                                @onclick="FecharModalBusiness">
+                            Não adquirir
+                        </button>
+                        <button type="button" class="modal-bonus-ok" style="background:linear-gradient(135deg,#2563eb,#3b82f6); color:white;"
+                                @onclick="AdquirirBusinessAsync">
+                            <i class="bi bi-briefcase"></i> Adquirir
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* Modal de BÔNUS DE VOLTA (aparece primeiro, ao completar uma volta) *@
+        @if (_modalBonusAberto)
+        {
+            <div class="modal-overlay" @onclick="FecharModalBonus">
+                <div class="modal-bonus" @onclick:stopPropagation="true">
+                    <div class="bonus-icone"><i class="bi bi-trophy-fill"></i></div>
+                    <h3>Volta completa!</h3>
+                    <p>Você deu uma volta no tabuleiro e ganhou um bônus.</p>
+                    <div class="bonus-valor">+ R$ @_bonusVoltaValor.ToString("N2")</div>
+                    <button type="button" class="modal-bonus-ok" @onclick="FecharModalBonus">
+                        <i class="bi bi-check-lg"></i> Continuar
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* Modal CENTRAL DA CASA (atalho ao cair) - reaproveita o PainelCasa *@
+        @if (_modalCasaAberto && _dadosCasa is not null)
+        {
+            <div class="modal-overlay" @onclick="FecharModalCasa">
+                <div class="modal-casa" @onclick:stopPropagation="true">
+                    <button type="button" class="modal-casa-x" @onclick="FecharModalCasa" title="Fechar">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                    @if (!string.IsNullOrWhiteSpace(_msgBot))
+                    {
+                        <div class="modal-bot-faixa">
+                            <i class="bi bi-robot"></i> @_msgBot
+                        </div>
+                    }
+                    <PainelCasa Dados="_dadosCasa"
+                                PodeComprar="PodeComprarAtual()"
+                                PodeAddCasa="PodeAddCasaAtual()"
+                                PodeAddHotel="PodeAddHotelAtual()"
+                                OnComprar="ComprarNoModalAsync"
+                                OnAddCasa="AddCasaNoModalAsync"
+                                OnAddHotel="AddHotelNoModalAsync"
+                                OnLimpar="FecharModalCasa" />
+                </div>
+            </div>
+        }
     }
 </div>
 
@@ -360,6 +758,7 @@
         transition: transform 140ms ease, box-shadow 140ms ease;
         min-width: 0;
         cursor: pointer;
+        --peao-ring: transparent;
     }
 
         .casa:hover {
@@ -367,6 +766,30 @@
             box-shadow: 0 12px 26px rgba(0,0,0,.55);
             z-index: 5;
         }
+
+        /* casa com jogador(es): anel externo com a cor (definida inline via --peao-ring) */
+        .casa.tem-peao {
+            box-shadow: 0 0 0 3px var(--peao-ring), 0 6px 16px rgba(0,0,0,.5);
+        }
+
+    /* bolinhas dos jogadores na casa */
+    .casa-peoes {
+        position: absolute;
+        bottom: 4px;
+        right: 4px;
+        display: flex;
+        gap: 3px;
+        z-index: 4;
+    }
+
+    .peao {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 2px solid rgba(255,255,255,.85);
+        box-shadow: 0 1px 4px rgba(0,0,0,.6);
+        display: inline-block;
+    }
 
     .casa-imagem {
         position: absolute;
@@ -393,75 +816,88 @@
         align-items: center;
         justify-content: center;
         overflow: hidden;
-        background:
-            radial-gradient(circle at 50% 40%, rgba(96,165,250,.28), transparent 62%),
-            linear-gradient(150deg, #1b2540, #0d1426 70%);
+        background: radial-gradient(circle at 50% 40%, rgba(96,165,250,.28), transparent 62%), linear-gradient(150deg, #1b2540, #0d1426 70%);
         color: #93c5fd;
         animation: surpresaGlow 3.2s ease-in-out infinite;
     }
 
-    /* o "?" flutua de leve, grande e iluminado */
-    .casa-surpresa i {
-        font-size: 2.6rem;
-        font-weight: 900;
-        z-index: 2;
-        color: #bfdbfe;
-        text-shadow: 0 0 12px rgba(96,165,250,.8), 0 0 26px rgba(96,165,250,.45);
-        animation: surpresaFloat 2.6s ease-in-out infinite;
-    }
+        /* o "?" flutua de leve, grande e iluminado */
+        .casa-surpresa i {
+            font-size: 2.6rem;
+            font-weight: 900;
+            z-index: 2;
+            color: #bfdbfe;
+            text-shadow: 0 0 12px rgba(96,165,250,.8), 0 0 26px rgba(96,165,250,.45);
+            animation: surpresaFloat 2.6s ease-in-out infinite;
+        }
 
-    /* brilho diagonal que cruza a casa de tempos em tempos */
-    .casa-surpresa::before {
-        content: "";
-        position: absolute;
-        top: -60%;
-        left: -120%;
-        width: 60%;
-        height: 220%;
-        background: linear-gradient(
-            105deg,
-            transparent,
-            rgba(147, 197, 253, .28),
-            transparent);
-        transform: rotate(8deg);
-        animation: surpresaShimmer 3.8s ease-in-out infinite;
-    }
+        /* brilho diagonal que cruza a casa de tempos em tempos */
+        .casa-surpresa::before {
+            content: "";
+            position: absolute;
+            top: -60%;
+            left: -120%;
+            width: 60%;
+            height: 220%;
+            background: linear-gradient( 105deg, transparent, rgba(147, 197, 253, .28), transparent);
+            transform: rotate(8deg);
+            animation: surpresaShimmer 3.8s ease-in-out infinite;
+        }
 
-    /* pontos decorativos sutis no fundo */
-    .casa-surpresa::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background-image: radial-gradient(rgba(148,163,184,.18) 1px, transparent 1px);
-        background-size: 12px 12px;
-        opacity: .5;
-        z-index: 1;
-    }
+        /* pontos decorativos sutis no fundo */
+        .casa-surpresa::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background-image: radial-gradient(rgba(148,163,184,.18) 1px, transparent 1px);
+            background-size: 12px 12px;
+            opacity: .5;
+            z-index: 1;
+        }
 
     .casa:hover .casa-surpresa {
         animation-duration: 1.4s;
     }
-    .casa:hover .casa-surpresa i {
-        animation-duration: 1s;
-        color: #ffffff;
-        transform: scale(1.18);
-        text-shadow: 0 0 16px rgba(147,197,253,.95), 0 0 34px rgba(96,165,250,.6);
-    }
+
+        .casa:hover .casa-surpresa i {
+            animation-duration: 1s;
+            color: #ffffff;
+            transform: scale(1.18);
+            text-shadow: 0 0 16px rgba(147,197,253,.95), 0 0 34px rgba(96,165,250,.6);
+        }
 
     @@keyframes surpresaGlow {
-        0%, 100% { box-shadow: inset 0 0 18px rgba(59,130,246,.12); }
-        50%      { box-shadow: inset 0 0 30px rgba(59,130,246,.34); }
+        0%, 100% {
+            box-shadow: inset 0 0 18px rgba(59,130,246,.12);
+        }
+
+        50% {
+            box-shadow: inset 0 0 30px rgba(59,130,246,.34);
+        }
     }
 
     @@keyframes surpresaFloat {
-        0%, 100% { transform: translateY(0) rotate(0deg); }
-        50%      { transform: translateY(-4px) rotate(-6deg); }
+        0%, 100% {
+            transform: translateY(0) rotate(0deg);
+        }
+
+        50% {
+            transform: translateY(-4px) rotate(-6deg);
+        }
     }
 
     @@keyframes surpresaShimmer {
-        0%   { left: -120%; }
-        55%  { left: 160%; }
-        100% { left: 160%; }
+        0% {
+            left: -120%;
+        }
+
+        55% {
+            left: 160%;
+        }
+
+        100% {
+            left: 160%;
+        }
     }
 
     /* casa visível só por causa do modo debug: contorno tracejado de alerta */
@@ -474,6 +910,20 @@
         display: flex;
         align-items: center;
         gap: .6rem;
+    }
+
+    .vez-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        padding: .2rem .5rem;
+        border-radius: 7px;
+        background: rgba(59, 130, 246, .18);
+        border: 1px solid rgba(59, 130, 246, .45);
+        color: #93c5fd;
+        font-size: .68rem;
+        font-weight: 800;
+        letter-spacing: .04em;
     }
 
     .debug-badge {
@@ -576,7 +1026,9 @@
         background: rgba(251, 191, 36, .06);
     }
 
-        .simulacao-box > i { color: #fbbf24; }
+        .simulacao-box > i {
+            color: #fbbf24;
+        }
 
     .simulacao-label {
         font-size: .78rem;
@@ -610,13 +1062,49 @@
         cursor: pointer;
     }
 
-        .simulacao-btn:hover { filter: brightness(1.08); }
+        .simulacao-btn:hover {
+            filter: brightness(1.08);
+        }
 
     .simulacao-msg {
         font-size: .8rem;
         color: #cbd5e1;
         margin-left: .25rem;
     }
+
+    .aviso-business {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .55rem .75rem;
+        border-radius: 10px;
+        background: rgba(251, 146, 60, .14);
+        border: 1px solid rgba(251, 146, 60, .4);
+        color: #fdba74;
+        font-size: .82rem;
+        font-weight: 700;
+    }
+
+        .aviso-business i {
+            flex-shrink: 0;
+        }
+
+        .aviso-business span {
+            flex: 1;
+        }
+
+        .aviso-business button {
+            background: transparent;
+            border: none;
+            color: #fdba74;
+            cursor: pointer;
+            padding: .1rem .3rem;
+            border-radius: 6px;
+        }
+
+            .aviso-business button:hover {
+                background: rgba(251,146,60,.2);
+            }
 
     .painel-tabs {
         display: flex;
@@ -636,7 +1124,9 @@
         transition: 140ms ease;
     }
 
-        .tab:hover { color: #e5e7eb; }
+        .tab:hover {
+            color: #e5e7eb;
+        }
 
         .tab.ativa {
             color: #60a5fa;
@@ -715,7 +1205,9 @@
         font-size: .85rem;
     }
 
-        .dados-lista dt { color: #94a3b8; }
+        .dados-lista dt {
+            color: #94a3b8;
+        }
 
         .dados-lista dd {
             margin: 0;
@@ -724,7 +1216,9 @@
             text-align: right;
         }
 
-            .dados-lista dd.saldo { color: #86efac; }
+            .dados-lista dd.saldo {
+                color: #86efac;
+            }
 
     .dados-vazio {
         color: #64748b;
@@ -735,12 +1229,12 @@
     .bloco-status {
         display: flex;
         flex-direction: column;
-        gap: 1.1rem;   /* respiro vertical entre Efeitos e Grupo */
+        gap: 1.1rem;
         min-width: 0;
     }
 
     .status-secao h4 {
-        margin: 0 0 .6rem;  /* respiro entre o título e os badges */
+        margin: 0 0 .6rem;
         font-size: .7rem;
         color: #94a3b8;
         font-weight: 800;
@@ -748,7 +1242,6 @@
         letter-spacing: .06em;
     }
 
-    /* badges quebram em mais linhas para aproveitar o vertical */
     .badges {
         display: flex;
         flex-wrap: wrap;
@@ -778,6 +1271,29 @@
         gap: .35rem;
     }
 
+    .badge-efeito {
+        gap: .4rem;
+        background: rgba(168, 85, 247, .14);
+        color: #d8b4fe;
+        border: 1px solid rgba(168, 85, 247, .30);
+    }
+
+        .badge-efeito i {
+            font-size: .85rem;
+        }
+
+    .badge-tag {
+        margin-left: .25rem;
+        padding: .05rem .35rem;
+        border-radius: 6px;
+        background: rgba(168, 85, 247, .22);
+        color: #e9d5ff;
+        font-size: .62rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+    }
+
     .grupo-cor {
         width: 11px;
         height: 11px;
@@ -786,7 +1302,6 @@
         display: inline-block;
     }
 
-    /* estado vazio do sub-painel (sem efeitos/grupos) */
     .vazio-status {
         display: flex;
         flex-direction: column;
@@ -797,9 +1312,14 @@
         font-size: .82rem;
         text-align: center;
     }
-    .vazio-status i { font-size: 1.6rem; }
 
-    .aba-propriedades { max-height: 220px; }
+        .vazio-status i {
+            font-size: 1.6rem;
+        }
+
+    .aba-propriedades {
+        max-height: 220px;
+    }
 
     .tabela-wrapper {
         overflow: auto;
@@ -870,7 +1390,6 @@
             transform: translateY(-1px);
         }
 
-        /* dado: botão quadrado só com ícone */
         .acao.dado {
             flex: 0 0 48px;
             width: 48px;
@@ -904,22 +1423,535 @@
             cursor: not-allowed;
             transform: none;
         }
-        .acao:disabled:hover {
-            background: rgba(148, 163, 184, .1);
-            transform: none;
-        }
+
+            .acao:disabled:hover {
+                background: rgba(148, 163, 184, .1);
+                transform: none;
+            }
+
         .acao.dado:disabled:hover {
             background: linear-gradient(135deg, #2563eb, #3b82f6);
         }
+
         .acao.destaque:disabled:hover {
             background: linear-gradient(135deg, #16a34a, #22c55e);
         }
 
     @@media (max-width: 1100px) {
-        .painel-inferior { flex-direction: column; }
-        .painel-sessao { flex: 1 1 auto; max-width: 100%; }
-        .painel-casa { flex: 1 1 auto; }
-        .aba-dados { grid-template-columns: 1fr; }
+        .painel-inferior {
+            flex-direction: column;
+        }
+
+        .painel-sessao {
+            flex: 1 1 auto;
+            max-width: 100%;
+        }
+
+        .painel-casa {
+            flex: 1 1 auto;
+        }
+
+        .aba-dados {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* ===== MODAIS (atalho ao cair) ===== */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(2, 6, 23, .78);
+        backdrop-filter: blur(3px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1200;
+        padding: 1rem;
+    }
+
+    .modal-casa {
+        position: relative;
+        width: min(94vw, 440px);
+        max-height: 88vh;
+        overflow-y: auto;
+        border: 1px solid rgba(96, 165, 250, .22);
+        border-radius: 20px;
+        background: linear-gradient(160deg, rgba(15,23,42,.99), rgba(2,6,23,.99));
+        box-shadow: 0 30px 70px rgba(0,0,0,.55);
+        padding: .5rem;
+    }
+
+    .modal-casa-x {
+        position: absolute;
+        top: .6rem;
+        right: .6rem;
+        z-index: 2;
+        width: 32px;
+        height: 32px;
+        border: 0;
+        border-radius: 9px;
+        background: rgba(148, 163, 184, .18);
+        color: #e5e7eb;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+        .modal-casa-x:hover {
+            background: rgba(148, 163, 184, .3);
+        }
+
+    .modal-bot-faixa {
+        display: flex;
+        align-items: center;
+        gap: .45rem;
+        margin: .25rem .25rem .5rem;
+        padding: .5rem .75rem;
+        border-radius: 10px;
+        background: rgba(168, 85, 247, .15);
+        border: 1px solid rgba(168, 85, 247, .35);
+        color: #d8b4fe;
+        font-weight: 800;
+        font-size: .85rem;
+    }
+
+    .modal-bonus {
+        width: min(92vw, 380px);
+        border: 1px solid rgba(251, 191, 36, .35);
+        border-radius: 22px;
+        background: linear-gradient(160deg, rgba(30,23,8,.99), rgba(15,10,2,.99));
+        box-shadow: 0 30px 70px rgba(0,0,0,.6);
+        padding: 2rem 1.5rem;
+        text-align: center;
+        animation: bonusPop .35s ease-out;
+    }
+
+    .bonus-icone {
+        font-size: 3rem;
+        color: #fbbf24;
+        margin-bottom: .5rem;
+        animation: bonusGira 2.4s ease-in-out infinite;
+    }
+
+    .modal-bonus h3 {
+        margin: 0 0 .4rem;
+        color: #fcd34d;
+        font-size: 1.3rem;
+    }
+
+    .modal-bonus p {
+        margin: 0 0 1rem;
+        color: #cbd5e1;
+        font-size: .9rem;
+    }
+
+    .bonus-valor {
+        font-size: 2rem;
+        font-weight: 900;
+        color: #86efac;
+        margin-bottom: 1.25rem;
+        text-shadow: 0 0 18px rgba(134,239,172,.4);
+    }
+
+    .modal-bonus-ok {
+        width: 100%;
+        min-height: 46px;
+        border: 0;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #d97706, #f59e0b);
+        color: #1f1300;
+        font-weight: 900;
+        font-size: 1rem;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: .4rem;
+    }
+
+        .modal-bonus-ok:hover {
+            filter: brightness(1.08);
+        }
+
+    @@keyframes bonusPop {
+        0% {
+            transform: scale(.8);
+            opacity: 0;
+        }
+
+        60% {
+            transform: scale(1.05);
+        }
+
+        100% {
+            transform: scale(1);
+            opacity: 1;
+        }
+    }
+
+    @@keyframes bonusGira {
+        0%, 100% {
+            transform: rotate(-8deg) scale(1);
+        }
+
+        50% {
+            transform: rotate(8deg) scale(1.1);
+        }
+    }
+
+    /* Modal "A liberdade cantou!" */
+    .modal-liberdade {
+        border: 1px solid rgba(134, 239, 172, .5) !important;
+        background: linear-gradient(160deg, rgba(8,30,18,.99), rgba(2,15,8,.99)) !important;
+    }
+
+        .modal-liberdade h3 {
+            color: #86efac;
+        }
+
+        .modal-liberdade p {
+            color: #cbd5e1;
+        }
+
+    .liberdade-icone {
+        color: #4ade80 !important;
+        animation: liberdadePulo 1.2s ease-in-out infinite;
+    }
+
+    .liberdade-btn {
+        background: linear-gradient(135deg, #16a34a, #22c55e) !important;
+        color: white !important;
+    }
+
+        .liberdade-btn:hover {
+            filter: brightness(1.08);
+        }
+
+    @@keyframes liberdadePulo {
+        0%, 100% {
+            transform: translateY(0) scale(1);
+        }
+
+        50% {
+            transform: translateY(-6px) scale(1.12);
+        }
+    }
+
+    /* Modal de Efeito (surpresa) */
+    .modal-efeito {
+        border: 1px solid rgba(168, 85, 247, .5) !important;
+        background: linear-gradient(160deg, rgba(25,12,40,.99), rgba(12,4,22,.99)) !important;
+    }
+
+        .modal-efeito h3 {
+            color: #d8b4fe;
+        }
+
+        .modal-efeito p {
+            color: #e9d5ff;
+        }
+
+    .efeito-icone {
+        color: #c084fc !important;
+        animation: efeitoBrilho 1.6s ease-in-out infinite;
+    }
+
+    .efeito-btn {
+        background: linear-gradient(135deg, #7c3aed, #a855f7) !important;
+        color: white !important;
+    }
+
+        .efeito-btn:hover {
+            filter: brightness(1.1);
+        }
+
+    @@keyframes efeitoBrilho {
+        0%, 100% {
+            transform: scale(1) rotate(0deg);
+            opacity: 1;
+        }
+
+        50% {
+            transform: scale(1.15) rotate(8deg);
+            opacity: .85;
+        }
+    }
+
+    /* Modal "Compra bloqueada" */
+    .modal-bloqueio {
+        border: 1px solid rgba(248, 113, 113, .5) !important;
+        background: linear-gradient(160deg, rgba(40,12,12,.99), rgba(22,4,4,.99)) !important;
+    }
+
+        .modal-bloqueio h3 {
+            color: #fca5a5;
+        }
+
+        .modal-bloqueio p {
+            color: #fecaca;
+        }
+
+    .bloqueio-icone {
+        color: #f87171 !important;
+        animation: bloqueioTremor 0.6s ease-in-out;
+    }
+
+    .bloqueio-btn {
+        background: linear-gradient(135deg, #dc2626, #ef4444) !important;
+        color: white !important;
+    }
+
+        .bloqueio-btn:hover {
+            filter: brightness(1.08);
+        }
+
+    @@keyframes bloqueioTremor {
+        0%, 100% {
+            transform: translateX(0);
+        }
+
+        20% {
+            transform: translateX(-6px) rotate(-5deg);
+        }
+
+        40% {
+            transform: translateX(6px) rotate(5deg);
+        }
+
+        60% {
+            transform: translateX(-4px) rotate(-3deg);
+        }
+
+        80% {
+            transform: translateX(4px) rotate(3deg);
+        }
+    }
+
+    /* Modal de imunidade */
+    .modal-imunidade {
+        border: 1px solid rgba(45, 212, 191, .5) !important;
+        background: linear-gradient(160deg, rgba(8,32,30,.99), rgba(3,18,16,.99)) !important;
+    }
+
+        .modal-imunidade h3 {
+            color: #5eead4;
+        }
+
+        .modal-imunidade p {
+            color: #ccfbf1;
+        }
+
+    .imunidade-icone {
+        color: #2dd4bf !important;
+        animation: imunidadeBrilho 1.4s ease-in-out infinite;
+    }
+
+    .imunidade-btn {
+        background: linear-gradient(135deg, #0d9488, #14b8a6) !important;
+        color: white !important;
+    }
+
+        .imunidade-btn:hover {
+            filter: brightness(1.1);
+        }
+
+    @@keyframes imunidadeBrilho {
+        0%, 100% {
+            transform: scale(1);
+            filter: drop-shadow(0 0 0 rgba(45,212,191,0));
+        }
+
+        50% {
+            transform: scale(1.12);
+            filter: drop-shadow(0 0 8px rgba(45,212,191,.6));
+        }
+    }
+
+    /* Modais de troca de casa */
+    .modal-troca {
+        border: 1px solid rgba(96, 165, 250, .5) !important;
+        background: linear-gradient(160deg, rgba(12,22,40,.99), rgba(4,10,22,.99)) !important;
+    }
+
+        .modal-troca h3 {
+            color: #93c5fd;
+        }
+
+        .modal-troca p {
+            color: #dbeafe;
+        }
+
+    .troca-icone {
+        color: #60a5fa !important;
+        animation: trocaGira 2s ease-in-out infinite;
+    }
+
+    @@keyframes trocaGira {
+        0%, 100% {
+            transform: rotate(0deg);
+        }
+
+        50% {
+            transform: rotate(180deg);
+        }
+    }
+
+    .troca-lista {
+        display: flex;
+        flex-direction: column;
+        gap: .5rem;
+        margin: 1rem 0;
+        max-height: 40vh;
+        overflow-y: auto;
+    }
+
+    .troca-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: .7rem 1rem;
+        border-radius: 12px;
+        border: 1px solid rgba(96,165,250,.3);
+        background: rgba(96,165,250,.1);
+        color: #e2e8f0;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: .95rem;
+        transition: background .15s;
+    }
+
+        .troca-item:hover {
+            background: rgba(96,165,250,.22);
+        }
+
+    .troca-nome {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        font-weight: 700;
+    }
+
+    .troca-pos {
+        color: #93c5fd;
+        font-size: .85rem;
+    }
+
+    .troca-botoes {
+        display: flex;
+        gap: .6rem;
+    }
+
+    .troca-confirmar {
+        background: linear-gradient(135deg, #2563eb, #3b82f6) !important;
+        color: white !important;
+        flex: 1;
+    }
+
+    .troca-cancelar {
+        background: rgba(148,163,184,.2) !important;
+        color: #cbd5e1 !important;
+        flex: 1;
+    }
+
+    /* Modal trocar grupo (duas colunas) */
+    .modal-trocagrupo {
+        border: 1px solid rgba(251, 191, 36, .5) !important;
+        background: linear-gradient(160deg, rgba(35,28,8,.99), rgba(20,15,3,.99)) !important;
+        max-width: 620px !important;
+    }
+
+        .modal-trocagrupo h3 {
+            color: #fcd34d;
+        }
+
+        .modal-trocagrupo p {
+            color: #fef3c7;
+        }
+
+    .trocagrupo-icone {
+        color: #fbbf24 !important;
+        animation: efeitoBrilho 1.8s ease-in-out infinite;
+    }
+
+    .tg-colunas {
+        display: flex;
+        gap: .8rem;
+        margin: 1rem 0;
+    }
+
+    .tg-coluna {
+        flex: 1;
+        min-width: 0;
+    }
+
+        .tg-coluna h4 {
+            color: #fcd34d;
+            font-size: .8rem;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            margin: 0 0 .5rem;
+            text-align: left;
+        }
+
+    .tg-lista {
+        display: flex;
+        flex-direction: column;
+        gap: .4rem;
+        max-height: 38vh;
+        overflow-y: auto;
+    }
+
+    .tg-item {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .55rem .7rem;
+        border-radius: 10px;
+        border: 1px solid rgba(251,191,36,.25);
+        background: rgba(251,191,36,.07);
+        color: #e2e8f0;
+        cursor: pointer;
+        font-family: inherit;
+        text-align: left;
+        transition: background .15s, border-color .15s;
+    }
+
+        .tg-item:hover {
+            background: rgba(251,191,36,.16);
+        }
+
+        .tg-item.tg-sel {
+            border-color: #fbbf24;
+            background: rgba(251,191,36,.25);
+        }
+
+    .tg-cor {
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        flex-shrink: 0;
+    }
+
+    .tg-nome {
+        display: flex;
+        flex-direction: column;
+        gap: .1rem;
+        font-size: .85rem;
+        overflow: hidden;
+    }
+
+        .tg-nome small {
+            color: #cbd5e1;
+            font-size: .7rem;
+        }
+
+    .tg-grupoatual {
+        margin-left: auto;
+        font-size: .7rem;
+        font-weight: 700;
+        color: #fcd34d;
+        flex-shrink: 0;
     }
 </style>
 
@@ -951,15 +1983,117 @@
     private string? _msgSimulacao;
     private DadosCasaPopup? _dadosCasa;
 
-    // Modo debug: ativado por ?debug=true (ou ?debug) na URL. Mostra pistas (número/cor)
-    // de casas não reveladas para facilitar o desenvolvimento. Fora dele, jogo real.
+    // Modo debug: ?debug=true na URL.
     private bool _debug;
 
-    // Configuração da partida (regras: negociações, apostas, limites de construção...)
+    // Configuração da partida.
     private BancoImobiliario.Models.Configuracao? _config;
 
-    // GrupoIds que o jogador da vez possui por completo (todas as casas do grupo)
+    // Grupos completos do jogador da vez.
     private HashSet<int> _gruposCompletos = new();
+
+    // Efeitos guardados ativos do jogador da vez (painel).
+    private List<AcaoCasaService.EfeitoAtivoDTO> _efeitosAtivos = new();
+
+    // ----- Estado de turno / dado -----
+    private TipoAcaoCasa? _ultimaAcaoCasa;
+    private DadoModal? _dadoModal;
+    private string _tituloDado = "Jogar dado";
+    private List<int> _numerosRestritosDado = new();
+    private AcaoCasaService.ResultadoTurno? _resultadoTurno;
+    private AcaoCasaService.ResultadoPagamentoAluguel? _ultimoPagamento;
+
+    // ----- Peões / jogador da vez / propriedades -----
+    private List<JogadorPosicaoDTO> _posicoesJogadores = new();
+    private LobbyJogadorDTO? _vezDe;
+    private List<TabuleiroCasaDTO> _minhasPropriedades = new();
+    private int _qtdPropriedades;
+
+    // ----- Modais (atalho ao cair) -----
+    private bool _modalCasaAberto;          // modal central com os dados da casa ao cair
+    private bool _modalBonusAberto;         // modal de bônus de volta
+    private decimal _bonusVoltaValor;       // valor do bônus a exibir
+    private bool _modalBonusAutoFechar;     // bot: fecha sozinho
+
+    // ----- Bot -----
+    private bool _botJogando;               // trava reentrância enquanto o bot joga
+    private string? _msgBot;                // mensagem do que o bot fez (exibida brevemente)
+
+    // ----- Companhia -----
+    private ModalComprarCompanhia? _modalCompanhia;
+
+    // ----- Internet (compra obrigatória + dado define aluguel) -----
+    private bool _rolandoDadoInternet;      // o próximo lançamento do dado define o aluguel da Internet
+    private int _fatorInternet;             // fator multiplicador da Internet (para mensagem)
+
+    // ----- Imposto -----
+    private bool _modalImpostoAberto;
+    private string _impostoNome = "";
+    private string _impostoFrase = "";
+    private string? _impostoImagem;
+    private decimal _impostoValor;          // valor a pagar (quando não depende de dado)
+    private bool _rolandoDadoImposto;       // o próximo dado define o valor do imposto
+    private int _fatorImposto;              // multiplicador do imposto por dado
+
+    // ----- Prisão -----
+    private bool _modalPrisaoAberto;
+    private string _prisaoNome = "";
+    private string _prisaoFrase = "";
+    private string? _prisaoImagem;
+    private int _prisaoRodadas;             // rodadas preso (quando não depende de dado)
+    private bool _rolandoDadoPrisao;        // o próximo dado define as rodadas presas
+    private bool _vezBloqueadaPorPrisao;    // jogador da vez está preso (não joga)
+    private bool _estaPresoNestaVez;        // humano preso: dado bloqueado, finaliza para cumprir
+    private bool _prisaoModoContador;       // modal de prisão exibindo o contador (não a frase da queda)
+    private bool _modalLiberdadeAberto;     // "A liberdade cantou!" ao sair da prisão
+    private int _idJogadorLibertando;       // id de quem cumpriu a última rodada (mostra liberdade na próxima vez)
+
+    // ----- Efeito (Fatia 1: saldo e movimento) -----
+    private bool _modalEfeitoAberto;
+    private string _efeitoFrase = "";
+    private string? _efeitoImagem;
+    private bool _modalCompraBloqueadaAberto;  // "Compra bloqueada por efeito!"
+    private bool _tentouComprarBloqueado;       // clicou em comprar com bloqueio ativo (consome ao finalizar)
+
+    // ----- Modais de imunidade (efeito guardado consumido no gatilho) -----
+    private bool _modalImunidadeAberto;
+    private string _imunidadeTitulo = "";
+    private string _imunidadeFrase = "";
+    private string _imunidadeIcone = "bi-shield-check";
+    private bool _rolandoDadoEfeito;        // próximo dado define quantas casas mover
+    private byte _efeitoAcaoId;             // ação do efeito (Avance/Volte)
+    private int _efeitoFator;               // fator multiplicador do movimento
+    private bool _efeitoAplicaCasaApos;     // resolve a casa de destino após mover
+
+    // ----- Troca de casa com jogador (efeito 32) -----
+    private bool _modalTrocaEscolhaAberto;       // escolher com quem trocar (3+ jogadores)
+    private bool _modalTrocaConfirmarAberto;     // confirmar troca direta (2 jogadores)
+    private List<AcaoCasaService.JogadorTrocaDTO> _jogadoresTroca = new();
+    private AcaoCasaService.JogadorTrocaDTO? _trocaAlvo;
+
+    // ----- Trocar grupo de propriedade (efeito 17) -----
+    private bool _modalTrocaGrupoAberto;
+    private List<BancoImobiliario.Models.DTOs.Jogo.PropriedadeSelecionavelDTO> _cidadesGrupo = new();
+    private List<AcaoCasaService.GrupoTabuleiroDTO> _gruposTabuleiro = new();
+    private BancoImobiliario.Models.DTOs.Jogo.PropriedadeSelecionavelDTO? _trocaGrupoCidade;
+    private int? _trocaGrupoNovo;
+
+    // ----- Business (aquisição grátis se tem todas as outras) -----
+    private bool _modalBusinessAberto;
+    private string _businessNome = "";
+    private decimal _businessAluguel;
+    private string? _avisoBusiness;         // aviso quando uma Business é revogada
+
+    // ----- Xerox (compra + escolhe propriedade para copiar o aluguel) -----
+    private ModalSelecaoPropriedade? _modalSelecao;
+    private List<BancoImobiliario.Models.DTOs.Jogo.PropriedadeSelecionavelDTO> _itensSelecao = new();
+    private string _selecaoTitulo = "";
+    private string _selecaoSubtitulo = "";
+    private string _selecaoTextoBotao = "Confirmar";
+    private string _selecaoFiltro = "todos";
+    private string _modoSelecao = "";       // "xerox" | "efeito_casa" (diferencia o callback do modal de seleção)
+    private bool _modalXeroxAberto;         // confirmação de compra da Xerox (misteriosa)
+    private decimal _xeroxPreco;            // valor de compra da Xerox
 
     protected override async Task OnInitializedAsync()
     {
@@ -1003,15 +2137,24 @@
             foreach (var l in layoutDoBanco)
                 _posicaoLayout[l.Posicao] = (l.Linha, l.Coluna);
 
-            _jogadorAtual = _lobby?.Jogadores
-                .Where(j => j.TipoJogador == (int)TipoJogadorPartida.Humano)
-                .OrderBy(j => j.OrdemTurno ?? 99)
-                .FirstOrDefault();
+            // Validação de início: revoga Business de quem não tem mais todas as companhias.
+            try
+            {
+                var avisos = await AcaoCasaService.RevalidarBusinessAsync(IdPartida);
+                if (avisos.Count > 0)
+                    _avisoBusiness = string.Join(" ", avisos);
+            }
+            catch { }
+
+            await CarregarPosicoesAsync();
+            DefinirJogadorDaVez();
 
             if (_jogadorAtual is not null)
                 _estadoJogador = await AcaoCasaService.ObterJogadorAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
 
             RecalcularGruposCompletos();
+            await CarregarEfeitosAtivosAsync();
+            RecalcularPropriedades();
             RemapearCelulas();
         }
         catch (Exception ex)
@@ -1024,7 +2167,6 @@
         }
     }
 
-    // Lê ?debug=... da URL. Aceita "?debug", "?debug=true", "?debug=1".
     private void DetectarDebug()
     {
         var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
@@ -1037,10 +2179,136 @@
         }
 
         var v = valor.ToString();
-        // "?debug" sem valor, "?debug=true" ou "?debug=1" ligam o modo.
         _debug = string.IsNullOrEmpty(v)
                  || v.Equals("true", StringComparison.OrdinalIgnoreCase)
                  || v == "1";
+    }
+
+    // Após o primeiro render (com o DadoModal já disponível), se a vez
+    // for de um bot, conduz o turno automático.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_carregando && string.IsNullOrWhiteSpace(_erro))
+        {
+            if (await VerificarPrisaoVezAsync())
+                return; // a vez estava presa: tratou e passou; o re-render cuida do resto
+
+            await VerificarTurnoBotAsync();
+        }
+    }
+
+    // Se o jogador da vez está preso:
+    //  - HUMANO: fica na vez (dado bloqueado), mostra o modal de preso; o
+    //    decremento e a passagem de vez acontecem quando ele finaliza.
+    //  - BOT: decrementa e passa a vez automaticamente (ele não tem o que fazer).
+    // Retorna true se a vez foi consumida automaticamente (apenas para bot).
+    private async Task<bool> VerificarPrisaoVezAsync()
+    {
+        if (_estadoJogador is null || _jogadorAtual is null) return false;
+        if (_botJogando) return false;
+
+        // só age se for a vez de jogar o dado
+        if (EstadoAtual != BancoImobiliario.Models.Enums.EstadoTurnoJogador.AguardandoDado)
+            return false;
+
+        if (_estadoJogador.TurnosPreso <= 0)
+        {
+            _vezBloqueadaPorPrisao = false;
+            _estaPresoNestaVez = false;
+            _prisaoModoContador = false;
+
+            // Acabou de cumprir a pena? Mostra "A liberdade cantou!" uma vez.
+            if (_idJogadorLibertando == _jogadorAtual.IdPartidaJogador
+                && _jogadorAtual.TipoJogador != (int)TipoJogadorPartida.Bot)
+            {
+                _idJogadorLibertando = 0;
+                _modalLiberdadeAberto = true;
+                StateHasChanged();
+            }
+
+            return false; // não está preso, joga normal
+        }
+
+        // ----- BOT preso: decrementa e passa automaticamente -----
+        if (_jogadorAtual.TipoJogador == (int)TipoJogadorPartida.Bot)
+        {
+            try
+            {
+                await AcaoCasaService.ProcessarInicioVezPrisaoAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+                await Task.Delay(900);
+
+                await PartidaService.PassarVezAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+                await RecarregarAsync();
+                StateHasChanged();
+
+                if (await VerificarPrisaoVezAsync())
+                    return true;
+
+                await VerificarTurnoBotAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+                StateHasChanged();
+                return false;
+            }
+        }
+
+        // ----- HUMANO preso: fica na vez, mostra o contador; finaliza quando quiser -----
+        _prisaoNome = "Você está preso!";
+        if (_estadoJogador.TurnosPreso >= 2)
+            _prisaoFrase = $"Você ainda tem {_estadoJogador.TurnosPreso} rodadas preso. Não pode jogar o dado, mas pode administrar suas propriedades antes de finalizar.";
+        else // == 1
+            _prisaoFrase = "Você será solto na próxima! Esta é sua última rodada preso. Não pode jogar o dado, mas pode administrar suas propriedades antes de finalizar.";
+
+        _prisaoRodadas = _estadoJogador.TurnosPreso;
+        _rolandoDadoPrisao = false;
+        _prisaoModoContador = true; // usa layout de contador (sem "N rodada(s) preso" redundante)
+        _estaPresoNestaVez = true;
+        _modalPrisaoAberto = true;
+        StateHasChanged();
+
+        return false; // não consome a vez automaticamente; o humano finaliza
+    }
+
+    // O jogador da vez é quem está com o turno ativo (não AguardandoVez).
+    // Se ninguém estiver ativo, cai no primeiro da ordem.
+    private void DefinirJogadorDaVez()
+    {
+        if (_lobby is null) return;
+
+        var ativos = _lobby.Jogadores
+            .Where(j => j.IdStatusJogador == (int)StatusJogadorPartida.Jogando)
+            .OrderBy(j => j.OrdemTurno ?? 99)
+            .ToList();
+
+        if (ativos.Count == 0)
+        {
+            _jogadorAtual = _lobby.Jogadores
+                .Where(j => j.TipoJogador == (int)TipoJogadorPartida.Humano)
+                .OrderBy(j => j.OrdemTurno ?? 99)
+                .FirstOrDefault();
+            _vezDe = _jogadorAtual;
+            return;
+        }
+
+        // Quem está com turno ativo? Precisamos do EstadoTurno real (entidade),
+        // que não vem no LobbyJogadorDTO. Usamos o _estadoJogador já carregado
+        // e, na ausência, o primeiro da ordem. A definição precisa do estado de
+        // cada jogador, então buscamos via posições (que trazem EstadoTurno).
+        var vezId = _posicoesJogadores
+            .Where(p => p.EstadoTurno != (int)EstadoTurnoJogador.AguardandoVez)
+            .OrderBy(p => p.OrdemTurno ?? 99)
+            .Select(p => (int?)p.IdPartidaJogador)
+            .FirstOrDefault();
+
+        _vezDe = vezId.HasValue
+            ? ativos.FirstOrDefault(j => j.IdPartidaJogador == vezId.Value) ?? ativos.First()
+            : ativos.First();
+
+        // Tela compartilhada (local): "seus dados" mostra o jogador da vez.
+        _jogadorAtual = _vezDe;
     }
 
     private void RemapearCelulas()
@@ -1062,22 +2330,75 @@
 
     private async Task RecarregarAsync()
     {
+        // Validação de início de vez: revoga Business de quem não tem mais
+        // todas as companhias (cobre roubo/perda futura de casas).
+        try
+        {
+            var avisos = await AcaoCasaService.RevalidarBusinessAsync(IdPartida);
+            if (avisos.Count > 0)
+                _avisoBusiness = string.Join(" ", avisos);
+        }
+        catch
+        {
+            // não bloqueia o recarregamento se a validação falhar
+        }
+
         _casas = await PartidaService.ObterTabuleiroPartidaAsync(IdPartida);
         _lobby = await PartidaService.ObterLobbyAsync(IdPartida);
 
-        _jogadorAtual = _lobby?.Jogadores
-            .Where(j => j.TipoJogador == (int)TipoJogadorPartida.Humano)
-            .OrderBy(j => j.OrdemTurno ?? 99)
-            .FirstOrDefault();
+        await CarregarPosicoesAsync();
+        DefinirJogadorDaVez();
 
         if (_jogadorAtual is not null)
             _estadoJogador = await AcaoCasaService.ObterJogadorAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
 
         RecalcularGruposCompletos();
+        await CarregarEfeitosAtivosAsync();
+        RecalcularPropriedades();
         RemapearCelulas();
     }
 
-    // Um grupo está "completo" quando o jogador da vez possui TODAS as casas daquele GrupoId.
+    // Carrega as posições de todos os jogadores ativos para desenhar os peões.
+    private async Task CarregarPosicoesAsync()
+    {
+        _posicoesJogadores = await PartidaService.ObterPosicoesJogadoresAsync(IdPartida);
+    }
+
+    // Posições dos jogadores são carregadas via serviço em CarregarPosicoesAsync.
+
+    private void RecalcularPropriedades()
+    {
+        if (_jogadorAtual is null)
+        {
+            _minhasPropriedades = new();
+            _qtdPropriedades = 0;
+            return;
+        }
+
+        var meuId = _jogadorAtual.IdPartidaJogador;
+        _minhasPropriedades = _casas.Where(c => c.ProprietarioId == meuId).ToList();
+        _qtdPropriedades = _minhasPropriedades.Count;
+    }
+
+    private async Task CarregarEfeitosAtivosAsync()
+    {
+        if (_jogadorAtual is null)
+        {
+            _efeitosAtivos = new();
+            return;
+        }
+
+        try
+        {
+            _efeitosAtivos = await AcaoCasaService.ListarEfeitosAtivosAsync(
+                IdPartida, _jogadorAtual.IdPartidaJogador);
+        }
+        catch
+        {
+            _efeitosAtivos = new();
+        }
+    }
+
     private void RecalcularGruposCompletos()
     {
         _gruposCompletos = new HashSet<int>();
@@ -1133,8 +2454,6 @@
             _msgSimulacao = resultado.Mensagem;
             _ultimaAcaoCasa = resultado.Acao;
 
-            // Define o estado de turno conforme o resultado:
-            // ação que exige resolução (pagar) -> ResolvendoCasa; caso contrário, já pode finalizar.
             var exigeResolucao = resultado.Acao is TipoAcaoCasa.PagouAluguel or TipoAcaoCasa.PagouImposto;
             await AcaoCasaService.DefinirEstadoTurnoAsync(
                 IdPartida, _jogadorAtual.IdPartidaJogador,
@@ -1145,6 +2464,69 @@
             _dadosCasa = await AcaoCasaService.MontarDadosCasaAsync(IdPartida, posicao, _jogadorAtual.IdPartidaJogador, _debug);
 
             await RecarregarAsync();
+
+            // Companhia normal sem dono -> modal de compra de companhia.
+            // Internet -> compra obrigatória + dado do aluguel.
+            // Caso contrário -> modal central da casa (atalho).
+            if (resultado.Acao == TipoAcaoCasa.PodeComprarCompanhia)
+            {
+                try
+                {
+                    var dadosComp = await AcaoCasaService.ObterDadosCompraCompanhiaAsync(IdPartida, _jogadorAtual.IdPartidaJogador, _debug);
+                    if (_modalCompanhia is not null)
+                        await _modalCompanhia.AbrirAsync(dadosComp);
+                }
+                catch
+                {
+                    AbrirModalCasa();
+                }
+            }
+            else if (resultado.Acao == TipoAcaoCasa.PodeComprarInternet)
+            {
+                await ResolverInternetAsync();
+            }
+            else if (resultado.Acao == TipoAcaoCasa.PodeComprarBusiness)
+            {
+                try
+                {
+                    var rb = await AcaoCasaService.AvaliarBusinessAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+                    if (rb.PodeComprar)
+                    {
+                        _businessNome = rb.Nome;
+                        _businessAluguel = rb.AluguelSomado;
+                        _modalBusinessAberto = true;
+                    }
+                    else
+                    {
+                        AbrirModalCasa();
+                    }
+                }
+                catch
+                {
+                    AbrirModalCasa();
+                }
+            }
+            else if (resultado.Acao == TipoAcaoCasa.PodeComprarXerox)
+            {
+                await ResolverXeroxAsync();
+            }
+            else if (resultado.Acao == TipoAcaoCasa.PagouImposto)
+            {
+                await ResolverImpostoAsync();
+            }
+            else if (resultado.Acao == TipoAcaoCasa.FoiPreso)
+            {
+                await ResolverPrisaoAsync();
+            }
+            else if (resultado.Acao == TipoAcaoCasa.Efeito)
+            {
+                await ResolverEfeitoNaTelaAsync();
+            }
+            else
+            {
+                _msgSimulacao = $"Caiu em {resultado.Mensagem} (ação: {resultado.Acao}, tipo casa: {resultado.TipoCasaId}).";
+                AbrirModalCasa();
+            }
         }
         catch (Exception ex)
         {
@@ -1172,14 +2554,50 @@
         _dadosCasa = null;
     }
 
+    // Verifica o bloqueio de compra (efeito guardado). Se ativo, NÃO consome:
+    // apenas marca que o jogador tentou comprar (será removido ao finalizar a
+    // jogada) e mostra o modal. Enquanto o jogador estiver na casa, toda tentativa
+    // de compra é bloqueada. Se ele nunca clicar em comprar, o efeito permanece.
+    private async Task<bool> VerificarBloqueioCompraAsync()
+    {
+        if (_jogadorAtual is null) return false;
+
+        var temBloqueio = await AcaoCasaService.TemEfeitoAtivoAsync(
+            IdPartida, _jogadorAtual.IdPartidaJogador, AcaoCasaService.EF_BLOQUEIO_COMPRA);
+
+        if (!temBloqueio) return false;
+
+        // marca que houve tentativa de compra com bloqueio ativo (consome ao finalizar)
+        _tentouComprarBloqueado = true;
+
+        // fecha qualquer modal de compra aberto
+        _modalCasaAberto = false;
+        _modalBusinessAberto = false;
+        _modalXeroxAberto = false;
+        if (_modalCompanhia is not null)
+            _modalCompanhia.Fechar();
+
+        // modal dedicado avisando o bloqueio
+        _modalCompraBloqueadaAberto = true;
+        StateHasChanged();
+        return true;
+    }
+
+    private void FecharModalCompraBloqueada() => _modalCompraBloqueadaAberto = false;
+
     private async Task ComprarAsync()
     {
         if (_jogadorAtual is null || _dadosCasa is null)
             return;
 
+        // efeito de bloqueio tem prioridade
+        if (await VerificarBloqueioCompraAsync())
+            return;
+
         try
         {
             await AcaoCasaService.ComprarPropriedadeAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+            await TocarSomAsync("compra");
 
             _dadosCasa = await AcaoCasaService.MontarDadosCasaAsync(IdPartida, _dadosCasa.Posicao, _jogadorAtual.IdPartidaJogador, _debug);
             await RecarregarAsync();
@@ -1198,10 +2616,9 @@
         => (BancoImobiliario.Models.Enums.EstadoTurnoJogador)(_estadoJogador?.EstadoTurno ?? 0);
 
     private bool PodeJogarDado
-        => EstadoAtual == BancoImobiliario.Models.Enums.EstadoTurnoJogador.AguardandoDado;
+        => EstadoAtual == BancoImobiliario.Models.Enums.EstadoTurnoJogador.AguardandoDado
+           && !_estaPresoNestaVez; // preso não rola o dado
 
-    // Pagar: há uma ação pendente de pagamento na casa atual (aluguel de outro dono).
-    // Impostos/efeitos entram aqui quando esses tipos forem implementados.
     private bool PodePagar
     {
         get
@@ -1214,39 +2631,1025 @@
         }
     }
 
-    // Finalizar: bool independente na entidade (será ligado aos efeitos depois).
-    private bool PodeFinalizar => _estadoJogador?.PodeFinalizar ?? false;
-
-    // Guarda o tipo da última ação resultante de cair na casa (para visibilidade do Pagar).
-    private TipoAcaoCasa? _ultimaAcaoCasa;
+    // Preso pode finalizar (cumprir a rodada); ou finaliza normal quando PodeFinalizar.
+    private bool PodeFinalizar
+        => _estaPresoNestaVez || (_estadoJogador?.PodeFinalizar ?? false);
 
     // ========================================
-    // HANDLERS DE TURNO (lógica real virá com o motor de turno)
+    // HANDLERS DE TURNO
     // ========================================
 
-    // TODO: rolar dado de verdade (faixa ValMinDado/ValMaxDado), mover o peão,
-    // resolver volta/bônus e então cair na casa. Por ora apenas avança o estado.
     private async Task JogarDadoAsync()
     {
-        if (_estadoJogador is null) return;
+        if (_estadoJogador is null || !PodeJogarDado) return;
 
-        await AcaoCasaService.DefinirEstadoTurnoAsync(
-            IdPartida, _estadoJogador.IdPartidaJogador,
-            BancoImobiliario.Models.Enums.EstadoTurnoJogador.ResolvendoCasa);
+        _tituloDado = $"Vez de {_jogadorAtual?.NomeJogador}";
 
-        _msgSimulacao = "Dado jogado (simulação). Resolva a ação da casa.";
+        if (_dadoModal is not null)
+            await _dadoModal.AbrirAsync();
+    }
+
+    // Chamado pelo DadoModal ao "Parar": rola no servidor.
+    // Se estamos definindo o aluguel da Internet, sorteia o dado da config
+    // (não move o peão). Caso contrário, é o dado de movimento do turno.
+    private async Task<int> RolarDadoTurnoNoServidorAsync()
+    {
+        // Dados que NÃO movem o peão (definem valor/rodadas): sorteia da config.
+        if (_rolandoDadoInternet || _rolandoDadoImposto || _rolandoDadoPrisao || _rolandoDadoEfeito)
+        {
+            return await AcaoCasaService.SortearDadoConfigAsync(IdPartida);
+        }
+
+        var r = await AcaoCasaService.RolarDadoTurnoAsync(IdPartida, _estadoJogador!.IdPartidaJogador);
+        _resultadoTurno = r;
+        return r.ValorDado;
+    }
+
+    // Chamado pelo DadoModal ao "Confirmar".
+    private async Task OnDadoTurnoConfirmado(int valor)
+    {
+        // Se este lançamento define o aluguel da Internet, aplica e encerra o fluxo.
+        if (_rolandoDadoInternet)
+        {
+            _rolandoDadoInternet = false;
+
+            if (_jogadorAtual is not null)
+            {
+                try
+                {
+                    var aluguel = await AcaoCasaService.AplicarAluguelInternetAsync(
+                        IdPartida, _jogadorAtual.IdPartidaJogador, valor);
+
+                    _msgSimulacao = valor <= 0
+                        ? $"Você tirou {valor}: o aluguel ficou em R$ 0,00 (sem reembolso da compra)."
+                        : $"Você tirou {valor}: aluguel definido em R$ {aluguel:N2} ({valor} × {_fatorInternet}).";
+                }
+                catch (Exception ex)
+                {
+                    _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+                }
+            }
+
+            await RecarregarAsync();
+            StateHasChanged();
+            return;
+        }
+
+        // Imposto por dado: valor = dado x fator.
+        if (_rolandoDadoImposto)
+        {
+            _rolandoDadoImposto = false;
+
+            if (_jogadorAtual is not null)
+            {
+                _impostoValor = AcaoCasaService.CalcularImpostoDado(valor, _fatorImposto);
+                _msgSimulacao = $"Você tirou {valor}: imposto de R$ {_impostoValor:N2} ({valor} × {_fatorImposto}).";
+                _modalImpostoAberto = true; // mostra o valor e o botão de pagar
+            }
+
+            StateHasChanged();
+            return;
+        }
+
+        // Prisão por dado: rodadas = valor do dado.
+        if (_rolandoDadoPrisao)
+        {
+            _rolandoDadoPrisao = false;
+
+            if (_jogadorAtual is not null)
+            {
+                try
+                {
+                    _prisaoRodadas = await AcaoCasaService.AplicarPrisaoDadoAsync(
+                        IdPartida, _jogadorAtual.IdPartidaJogador, valor);
+                    _msgSimulacao = $"Você tirou {valor}: preso por {_prisaoRodadas} rodada(s).";
+                }
+                catch (Exception ex)
+                {
+                    _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+                }
+                _modalPrisaoAberto = true;
+            }
+
+            await RecarregarAsync();
+            StateHasChanged();
+            return;
+        }
+
+        // Efeito de movimento: avança/volta N casas (dado x fator).
+        if (_rolandoDadoEfeito)
+        {
+            _rolandoDadoEfeito = false;
+
+            if (_jogadorAtual is not null)
+            {
+                try
+                {
+                    var avancar = _efeitoAcaoId != 20; // 20 = Volte; senão Avance
+                    var novaPos = await AcaoCasaService.AplicarMovimentoEfeitoAsync(
+                        IdPartida, _jogadorAtual.IdPartidaJogador, valor, _efeitoFator, avancar);
+
+                    _msgSimulacao = $"Você {(avancar ? "avançou" : "voltou")} {valor} casa(s) → casa {novaPos}.";
+
+                    await RecarregarAsync();
+
+                    // Se o efeito resolve a casa de destino, dispara a queda nela.
+                    if (_efeitoAplicaCasaApos)
+                    {
+                        var resCasa = await AcaoCasaService.AoCairNaCasaAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+                        _resultadoTurno = new AcaoCasaService.ResultadoTurno(
+                            valor, _estadoJogador?.PosicaoAtual ?? novaPos, novaPos, false, 0m, resCasa);
+
+                        _dadosCasa = await AcaoCasaService.MontarDadosCasaAsync(
+                            IdPartida, novaPos, _jogadorAtual.IdPartidaJogador, _debug);
+
+                        await RecarregarAsync();
+                        await AbrirModalPosCasaAsync(); // resolve a casa de destino (aluguel, compra, etc.)
+                    }
+                    else
+                    {
+                        _dadosCasa = await AcaoCasaService.MontarDadosCasaAsync(
+                            IdPartida, novaPos, _jogadorAtual.IdPartidaJogador, _debug);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+                }
+            }
+
+            StateHasChanged();
+            return;
+        }
+
+        if (_resultadoTurno is not null)
+        {
+            _ultimaAcaoCasa = _resultadoTurno.Casa.Acao;
+            _msgSimulacao = _resultadoTurno.Casa.Mensagem;
+        }
+
+        if (_jogadorAtual is not null)
+            _dadosCasa = await AcaoCasaService.MontarDadosCasaAsync(
+                IdPartida, _resultadoTurno?.PosicaoFinal ?? _estadoJogador!.PosicaoAtual,
+                _jogadorAtual.IdPartidaJogador, _debug);
+
         await RecarregarAsync();
+
+        // Encadeamento dos modais: bônus de volta primeiro (se houve), depois a casa.
+        if (_resultadoTurno is { CompletouVolta: true, BonusVolta: > 0 })
+        {
+            _bonusVoltaValor = _resultadoTurno.BonusVolta;
+            _modalBonusAutoFechar = false;
+            _modalBonusAberto = true;   // ao fechar, abre o modal seguinte
+            await TocarSomAsync("bonus");
+        }
+        else
+        {
+            await AbrirModalPosCasaAsync();
+        }
+
+        StateHasChanged();
+    }
+
+    // Decide qual modal abrir ao cair: companhia normal sem dono -> modal de
+    // compra de companhia; Internet -> compra automática + dado do aluguel;
+    // caso contrário -> modal central da casa (atalho).
+    private async Task AbrirModalPosCasaAsync()
+    {
+        var acao = _resultadoTurno?.Casa.Acao;
+
+        if (acao == TipoAcaoCasa.PodeComprarCompanhia && _jogadorAtual is not null)
+        {
+            try
+            {
+                var dados = await AcaoCasaService.ObterDadosCompraCompanhiaAsync(IdPartida, _jogadorAtual.IdPartidaJogador, _debug);
+                if (_modalCompanhia is not null)
+                    await _modalCompanhia.AbrirAsync(dados);
+                return;
+            }
+            catch
+            {
+                // se falhar, cai no modal padrão
+            }
+        }
+
+        if (acao == TipoAcaoCasa.PodeComprarInternet && _jogadorAtual is not null)
+        {
+            await ResolverInternetAsync();
+            return;
+        }
+
+        if (acao == TipoAcaoCasa.PodeComprarBusiness && _jogadorAtual is not null)
+        {
+            try
+            {
+                var r = await AcaoCasaService.AvaliarBusinessAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+                if (r.PodeComprar)
+                {
+                    _businessNome = r.Nome;
+                    _businessAluguel = r.AluguelSomado;
+                    _modalBusinessAberto = true;
+                    StateHasChanged();
+                    return;
+                }
+            }
+            catch
+            {
+                // se falhar, cai no modal padrão
+            }
+        }
+
+        if (acao == TipoAcaoCasa.PodeComprarXerox && _jogadorAtual is not null)
+        {
+            await ResolverXeroxAsync();
+            return;
+        }
+
+        if (acao == TipoAcaoCasa.PagouImposto && _jogadorAtual is not null)
+        {
+            await ResolverImpostoAsync();
+            return;
+        }
+
+        if (acao == TipoAcaoCasa.FoiPreso && _jogadorAtual is not null)
+        {
+            await ResolverPrisaoAsync();
+            return;
+        }
+
+        if (acao == TipoAcaoCasa.Efeito && _jogadorAtual is not null)
+        {
+            await ResolverEfeitoNaTelaAsync();
+            return;
+        }
+
+        AbrirModalCasa();
+    }
+
+    // ===== EFEITO (Fatia 1) =====
+    private async Task ResolverEfeitoNaTelaAsync()
+    {
+        if (_jogadorAtual is null) return;
+
+        try
+        {
+            var r = await AcaoCasaService.ResolverEfeitoAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+
+            // imune ao efeito: nem sorteia, mostra modal de imunidade
+            if (r.Imune)
+            {
+                await RecarregarAsync();
+                await AbrirModalImunidadeAsync("Imune a efeitos!", r.Frase ?? "Você não foi afetado pelo efeito!", "bi-shield-shaded");
+                return;
+            }
+
+            _efeitoFrase = r.Frase ?? "Efeito!";
+            _efeitoImagem = r.Imagem;
+            _efeitoAcaoId = r.AcaoEfeitoId;
+            _efeitoFator = (int)r.FatorMultiplicador;
+            _efeitoAplicaCasaApos = r.AplicarCasaAposEfeito;
+            _msgSimulacao = r.Mensagem;
+
+            // som conforme o tom do efeito (bom/ruim/neutro)
+            await TocarSomEfeitoAsync(r.Tom);
+
+            await RecarregarAsync();
+
+            switch (r.AcaoTela)
+            {
+                case AcaoCasaService.AcaoTelaEfeito.Nada:
+                    // instantâneo (ganhe/perca/teleporte) — só mostra a frase
+                    _modalEfeitoAberto = true;
+                    StateHasChanged();
+                    break;
+
+                case AcaoCasaService.AcaoTelaEfeito.RolarDado:
+                    // avançar/voltar N casas — rola o dado
+                    _rolandoDadoEfeito = true;
+                    _tituloDado = r.AcaoEfeitoId == 20 ? "Role para voltar casas!" : "Role para avançar casas!";
+                    StateHasChanged();
+                    if (_dadoModal is not null)
+                        await _dadoModal.AbrirAsync();
+                    break;
+
+                case AcaoCasaService.AcaoTelaEfeito.EscolherCasa:
+                    // escolhe a casa de destino
+                    _itensSelecao = await AcaoCasaService.ListarCasasTabuleiroAsync(
+                        IdPartida, _estadoJogador?.PosicaoAtual ?? 0);
+                    _selecaoTitulo = "Escolha para onde ir";
+                    _selecaoSubtitulo = "Você será levado até a casa escolhida (a jogada encerra).";
+                    _selecaoTextoBotao = "Ir para esta casa";
+                    _selecaoFiltro = "todos";
+                    _modoSelecao = "efeito_casa";
+                    StateHasChanged();
+                    if (_modalSelecao is not null)
+                        await _modalSelecao.AbrirAsync();
+                    break;
+
+                case AcaoCasaService.AcaoTelaEfeito.PegarBanco:
+                    // escolhe uma cidade sem dono do banco
+                    _itensSelecao = await AcaoCasaService.ListarCidadesBancoAsync(IdPartida);
+                    if (_itensSelecao.Count == 0)
+                    {
+                        _efeitoFrase = "Não há cidades disponíveis no banco para pegar.";
+                        _modalEfeitoAberto = true;
+                        StateHasChanged();
+                        break;
+                    }
+                    _selecaoTitulo = "Pegue uma propriedade do banco";
+                    _selecaoSubtitulo = "Escolha uma cidade sem dono. Ela será sua, de graça!";
+                    _selecaoTextoBotao = "Pegar esta propriedade";
+                    _selecaoFiltro = "banco";
+                    _modoSelecao = "efeito_pegar_banco";
+                    StateHasChanged();
+                    if (_modalSelecao is not null)
+                        await _modalSelecao.AbrirAsync();
+                    break;
+
+                case AcaoCasaService.AcaoTelaEfeito.Roubar:
+                    // escolhe uma propriedade de outro jogador
+                    _itensSelecao = await AcaoCasaService.ListarPropriedadesJogadoresAsync(
+                        IdPartida, _jogadorAtual.IdPartidaJogador);
+                    if (_itensSelecao.Count == 0)
+                    {
+                        _efeitoFrase = "Não há propriedades de outros jogadores para roubar.";
+                        _modalEfeitoAberto = true;
+                        StateHasChanged();
+                        break;
+                    }
+                    _selecaoTitulo = "Roube uma propriedade";
+                    _selecaoSubtitulo = "Escolha uma propriedade de outro jogador para roubar (vai com casas e hotéis).";
+                    _selecaoTextoBotao = "Roubar esta propriedade";
+                    _selecaoFiltro = "jogadores";
+                    _modoSelecao = "efeito_roubar";
+                    StateHasChanged();
+                    if (_modalSelecao is not null)
+                        await _modalSelecao.AbrirAsync();
+                    break;
+
+                case AcaoCasaService.AcaoTelaEfeito.TrocarJogador:
+                    {
+                        var outros = await AcaoCasaService.ListarJogadoresParaTrocaAsync(
+                            IdPartida, _jogadorAtual.IdPartidaJogador);
+
+                        if (outros.Count == 0)
+                        {
+                            _efeitoFrase = "Não há outro jogador para trocar de casa.";
+                            _modalEfeitoAberto = true;
+                            StateHasChanged();
+                            break;
+                        }
+
+                        _jogadoresTroca = outros;
+
+                        if (outros.Count == 1)
+                        {
+                            // só um outro jogador: confirmação direta
+                            _trocaAlvo = outros[0];
+                            _modalTrocaConfirmarAberto = true;
+                        }
+                        else
+                        {
+                            // vários: escolher com quem trocar
+                            _modalTrocaEscolhaAberto = true;
+                        }
+                        StateHasChanged();
+                    }
+                    break;
+
+                case AcaoCasaService.AcaoTelaEfeito.TrocarGrupo:
+                    {
+                        _cidadesGrupo = await AcaoCasaService.ListarCidadesComGrupoAsync(IdPartida);
+                        _gruposTabuleiro = await AcaoCasaService.ListarGruposTabuleiroAsync(IdPartida);
+
+                        if (_cidadesGrupo.Count == 0 || _gruposTabuleiro.Count == 0)
+                        {
+                            _efeitoFrase = "Não há cidades com grupo ou grupos disponíveis para trocar.";
+                            _modalEfeitoAberto = true;
+                            StateHasChanged();
+                            break;
+                        }
+
+                        _trocaGrupoCidade = null;
+                        _trocaGrupoNovo = null;
+                        _modalTrocaGrupoAberto = true;
+                        StateHasChanged();
+                    }
+                    break;
+
+                default:
+                    // não implementado nesta fatia: mostra a frase e segue
+                    _modalEfeitoAberto = true;
+                    StateHasChanged();
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+            StateHasChanged();
+        }
+    }
+
+    private void FecharModalEfeito() => _modalEfeitoAberto = false;
+
+    // ===== TROCAR GRUPO DE PROPRIEDADE (efeito 17) =====
+    private void SelecionarCidadeGrupo(BancoImobiliario.Models.DTOs.Jogo.PropriedadeSelecionavelDTO cidade)
+    {
+        _trocaGrupoCidade = cidade;
+        StateHasChanged();
+    }
+
+    private void SelecionarNovoGrupo(int grupoId)
+    {
+        _trocaGrupoNovo = grupoId;
+        StateHasChanged();
+    }
+
+    private void CancelarTrocaGrupo()
+    {
+        _modalTrocaGrupoAberto = false;
+        _trocaGrupoCidade = null;
+        _trocaGrupoNovo = null;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmarTrocaGrupoAsync()
+    {
+        if (_trocaGrupoCidade is null || _trocaGrupoNovo is null) return;
+
+        var cidade = _trocaGrupoCidade;
+        var novoGrupo = _trocaGrupoNovo.Value;
+        _modalTrocaGrupoAberto = false;
+        _trocaGrupoCidade = null;
+        _trocaGrupoNovo = null;
+
+        try
+        {
+            await AcaoCasaService.TrocarGrupoPropriedadeAsync(
+                IdPartida, cidade.PartidaTabuleiroId, novoGrupo);
+
+            _msgSimulacao = $"O grupo de {cidade.Nome} foi alterado para o grupo {novoGrupo}.";
+            await TocarSomEfeitoAsync("neutro");
+            await RecarregarAsync(); // recalcula grupos completos
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
+
+        StateHasChanged();
+    }
+
+    // ===== TROCA DE CASA COM JOGADOR (efeito 32) =====
+    private void SelecionarAlvoTroca(AcaoCasaService.JogadorTrocaDTO alvo)
+    {
+        _trocaAlvo = alvo;
+        _modalTrocaEscolhaAberto = false;
+        _modalTrocaConfirmarAberto = true;
+        StateHasChanged();
+    }
+
+    private void CancelarTroca()
+    {
+        // Cancelou a escolha: ainda assim o efeito foi disparado ao cair na casa.
+        // Sem alvo, não há troca; apenas fecha (o jogador pode finalizar).
+        _modalTrocaEscolhaAberto = false;
+        _modalTrocaConfirmarAberto = false;
+        _trocaAlvo = null;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmarTrocaAsync()
+    {
+        if (_jogadorAtual is null || _trocaAlvo is null) return;
+
+        var alvo = _trocaAlvo;
+        _modalTrocaConfirmarAberto = false;
+        _modalTrocaEscolhaAberto = false;
+        _trocaAlvo = null;
+
+        try
+        {
+            var novaPos = await AcaoCasaService.TrocarDeCasaAsync(
+                IdPartida, _jogadorAtual.IdPartidaJogador, alvo.IdPartidaJogador);
+
+            _msgSimulacao = $"Você trocou de casa com {alvo.NomeJogador} (agora na casa {novaPos}).";
+            await TocarSomEfeitoAsync("neutro");
+            await RecarregarAsync();
+
+            // Se a casa de efeito manda resolver o destino, resolve a nova casa.
+            if (_efeitoAplicaCasaApos)
+            {
+                var resCasa = await AcaoCasaService.AoCairNaCasaAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+                _dadosCasa = await AcaoCasaService.MontarDadosCasaAsync(
+                    IdPartida, novaPos, _jogadorAtual.IdPartidaJogador, _debug);
+                await RecarregarAsync();
+                await AbrirModalPosCasaAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
+
+        StateHasChanged();
+    }
+
+    // ===== IMPOSTO =====
+    private async Task ResolverImpostoAsync()
+    {
+        if (_jogadorAtual is null) return;
+
+        try
+        {
+            var r = await AcaoCasaService.ResolverImpostoAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+
+            // imune: não paga, mostra modal de imunidade
+            if (r.Imune)
+            {
+                await RecarregarAsync();
+                await AbrirModalImunidadeAsync("Imune a impostos!", r.Frase ?? "Você não pagou o imposto!", "bi-shield-check");
+                return;
+            }
+
+            _impostoNome = r.Nome;
+            _impostoFrase = r.Frase ?? "";
+            _impostoImagem = r.Imagem;
+            _fatorImposto = r.FatorMultiplicador;
+
+            await TocarSomAsync("impostos");
+
+            await RecarregarAsync();
+
+            if (r.DependeDado)
+            {
+                // abre o dado para definir o valor (dado x fator)
+                _rolandoDadoImposto = true;
+                _tituloDado = "Role para definir o imposto!";
+                // NÃO abre o modal de imposto agora — só o DadoModal, para não sobrepor.
+                StateHasChanged();
+
+                if (_dadoModal is not null)
+                    await _dadoModal.AbrirAsync();
+            }
+            else
+            {
+                _impostoValor = r.Valor;
+                _modalImpostoAberto = true;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConfirmarPagamentoImpostoAsync()
+    {
+        _modalImpostoAberto = false;
+
+        if (_jogadorAtual is null) return;
+
+        try
+        {
+            var r = await AcaoCasaService.PagarImpostoAsync(IdPartida, _jogadorAtual.IdPartidaJogador, _impostoValor);
+
+            if (r.Eliminado)
+            {
+                _msgSimulacao = $"Sem saldo para o imposto de R$ {_impostoValor:N2}. Jogador eliminado.";
+                await TocarSomAsync("eliminado");
+            }
+            else if (r.PrecisaVender)
+            {
+                _msgSimulacao = $"Saldo insuficiente. Deve R$ {r.AluguelDevido:N2}, pode levantar R$ {r.PotencialVenda:N2} vendendo.";
+            }
+            else
+            {
+                _msgSimulacao = $"Imposto pago: R$ {_impostoValor:N2}.";
+                await TocarSomAsync("aluguel");
+            }
+
+            await RecarregarAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
+
+        StateHasChanged();
+    }
+
+    // ===== PRISÃO =====
+    private async Task ResolverPrisaoAsync()
+    {
+        if (_jogadorAtual is null) return;
+
+        try
+        {
+            var r = await AcaoCasaService.ResolverPrisaoAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+
+            // imune: não prende, mostra modal de imunidade
+            if (r.Imune)
+            {
+                await RecarregarAsync();
+                await AbrirModalImunidadeAsync("Imune à prisão!", r.Frase ?? "Você escapou da prisão!", "bi-shield-lock");
+                return;
+            }
+
+            _prisaoNome = r.Nome;
+            _prisaoFrase = r.Frase ?? "";
+            _prisaoImagem = r.Imagem;
+
+            await RecarregarAsync();
+
+            if (r.DependeDado)
+            {
+                _rolandoDadoPrisao = true;
+                _tituloDado = "Role para ver quantas rodadas preso!";
+                // NÃO abre o modal de prisão agora — só o DadoModal, para não sobrepor.
+                StateHasChanged();
+
+                if (_dadoModal is not null)
+                    await _dadoModal.AbrirAsync();
+            }
+            else
+            {
+                _prisaoRodadas = r.Rodadas;
+                _modalPrisaoAberto = true;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+            StateHasChanged();
+        }
+    }
+
+    private void FecharModalImposto() => _modalImpostoAberto = false;
+    private void FecharModalPrisao() => _modalPrisaoAberto = false;
+    private void FecharModalLiberdade() => _modalLiberdadeAberto = false;
+
+    // Abre o modal de imunidade (verde) e toca o som de efeito bom.
+    private async Task AbrirModalImunidadeAsync(string titulo, string frase, string icone)
+    {
+        _imunidadeTitulo = titulo;
+        _imunidadeFrase = frase;
+        _imunidadeIcone = icone;
+        _modalImunidadeAberto = true;
+        await TocarSomEfeitoAsync("bom");
+        StateHasChanged();
+    }
+
+    private void FecharModalImunidade() => _modalImunidadeAberto = false;
+
+    // Toca o som conforme o tom do efeito: bom / ruim / neutro.
+    private async Task TocarSomEfeitoAsync(string tom)
+    {
+        switch (tom)
+        {
+            case "bom":
+                await TocarSomAsync("efeito_bom");
+                break;
+            case "ruim":
+                await TocarSomAsync("efeito_ruim");
+                break;
+            default:
+                await TocarSomAsync("efeito_neutro");
+                break;
+        }
+    }
+
+    // Xerox: abre o modal de confirmação (misteriosa, valor fixo, opcional).
+    // A compra só acontece se o jogador confirmar.
+    private async Task ResolverXeroxAsync()
+    {
+        if (_jogadorAtual is null) return;
+
+        // valor de compra: vem do resultado do turno (ProcessarPropriedade preenche
+        // Valor com ValorCompraAtual). Em fallback, usa o dados da casa.
+        _xeroxPreco = _resultadoTurno?.Casa.Valor ?? _dadosCasa?.ValorCompra ?? 0m;
+        _modalXeroxAberto = true;
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    private void FecharModalXerox()
+    {
+        _modalXeroxAberto = false;
+    }
+
+    // Confirmou a compra da Xerox: compra, revela e abre o modal de seleção
+    // para copiar o aluguel de outra propriedade.
+    private async Task ConfirmarCompraXeroxAsync()
+    {
+        _modalXeroxAberto = false;
+
+        if (_jogadorAtual is null) return;
+
+        // efeito de bloqueio tem prioridade
+        if (await VerificarBloqueioCompraAsync())
+            return;
+
+        try
+        {
+            var r = await AcaoCasaService.ComprarXeroxAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+            await TocarSomAsync("compra");
+            _msgSimulacao = r.Mensagem;
+
+            // posição da Xerox = posição atual do jogador (onde ele caiu)
+            var posXerox = _estadoJogador?.PosicaoAtual ?? _dadosCasa?.Posicao ?? 0;
+
+            await RecarregarAsync();
+
+            // monta a lista de copiáveis e abre o modal de seleção
+            _itensSelecao = await AcaoCasaService.ListarCopiaveisXeroxAsync(IdPartida, posXerox);
+            _selecaoTitulo = "Xerox — copiar aluguel";
+            _selecaoSubtitulo = "Escolha a propriedade cujo aluguel será copiado.";
+            _selecaoTextoBotao = "Copiar aluguel";
+            _selecaoFiltro = "jogadores"; // só propriedades compradas (sem banco); inclui as suas
+            _modoSelecao = "xerox";
+
+            _msgSimulacao = $"Xerox comprada (pos {posXerox}). {_itensSelecao.Count} propriedade(s) para copiar.";
+            StateHasChanged();
+
+            if (_modalSelecao is not null)
+            {
+                await _modalSelecao.AbrirAsync();
+            }
+            else
+            {
+                _msgSimulacao = "Xerox comprada, mas o modal de seleção não está disponível (ref nula).";
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnPropriedadeSelecionadaXerox(BancoImobiliario.Models.DTOs.Jogo.PropriedadeSelecionavelDTO escolha)
+    {
+        if (_jogadorAtual is null) return;
+
+        // Efeito "escolher casa": move o jogador para a casa escolhida (encerra a jogada).
+        if (_modoSelecao == "efeito_casa")
+        {
+            _modoSelecao = "";
+            try
+            {
+                await AcaoCasaService.MoverParaCasaAsync(IdPartida, _jogadorAtual.IdPartidaJogador, escolha.Posicao);
+                _msgSimulacao = $"Você foi levado para a casa {escolha.Posicao}.";
+                await RecarregarAsync();
+            }
+            catch (Exception ex)
+            {
+                _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+            }
+            StateHasChanged();
+            return;
+        }
+
+        // Efeito "pegar do banco": a cidade escolhida vira do jogador (de graça).
+        if (_modoSelecao == "efeito_pegar_banco")
+        {
+            _modoSelecao = "";
+            try
+            {
+                var nome = await AcaoCasaService.PegarPropriedadeBancoAsync(
+                    IdPartida, _jogadorAtual.IdPartidaJogador, escolha.PartidaTabuleiroId);
+                _msgSimulacao = $"Você pegou {nome} do banco!";
+                await TocarSomEfeitoAsync("bom");
+                await RecarregarAsync();
+            }
+            catch (Exception ex)
+            {
+                _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+            }
+            StateHasChanged();
+            return;
+        }
+
+        // Efeito "roubar": a propriedade escolhida muda para o jogador.
+        if (_modoSelecao == "efeito_roubar")
+        {
+            _modoSelecao = "";
+            try
+            {
+                var nome = await AcaoCasaService.RoubarPropriedadeAsync(
+                    IdPartida, _jogadorAtual.IdPartidaJogador, escolha.PartidaTabuleiroId);
+                _msgSimulacao = $"Você roubou {nome} de {escolha.NomeProprietario}!";
+                await TocarSomEfeitoAsync("bom");
+                await RecarregarAsync();
+            }
+            catch (Exception ex)
+            {
+                _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+            }
+            StateHasChanged();
+            return;
+        }
+
+        // Padrão: Xerox (copiar aluguel).
+        _modoSelecao = "";
+        try
+        {
+            var aluguel = await AcaoCasaService.AplicarCopiaXeroxAsync(
+                IdPartida, _jogadorAtual.IdPartidaJogador, escolha.PartidaTabuleiroId);
+
+            _msgSimulacao = $"Aluguel copiado de {escolha.Nome}: R$ {aluguel:N2}.";
+            await RecarregarAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
+
+        StateHasChanged();
+    }
+
+    private void FecharModalBusiness()
+    {
+        _modalBusinessAberto = false;
+    }
+
+    private async Task AdquirirBusinessAsync()
+    {
+        _modalBusinessAberto = false;
+
+        if (_jogadorAtual is null) return;
+
+        // efeito de bloqueio tem prioridade: mesmo grátis, é "compra"
+        if (await VerificarBloqueioCompraAsync())
+            return;
+
+        try
+        {
+            var r = await AcaoCasaService.ComprarBusinessAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+            await TocarSomAsync("compra");
+            _msgSimulacao = r.Mensagem;
+            await RecarregarAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
+
+        StateHasChanged();
+    }
+
+    // Internet: compra obrigatória automática (se há saldo). Se comprou, abre o
+    // dado para definir o aluguel. Se pulou (sem saldo), só informa e segue.
+    private async Task ResolverInternetAsync()
+    {
+        if (_jogadorAtual is null) return;
+
+        // efeito de bloqueio tem prioridade: nem a compra obrigatória ocorre
+        if (await VerificarBloqueioCompraAsync())
+            return;
+
+        try
+        {
+            var r = await AcaoCasaService.ComprarInternetAsync(IdPartida, _jogadorAtual.IdPartidaJogador);
+            _msgSimulacao = r.Mensagem;
+
+            if (r.Comprou)
+            {
+                await TocarSomAsync("compra");
+                _fatorInternet = r.FatorMultiplicador;
+                await RecarregarAsync();
+
+                // Abre o dado para DEFINIR o aluguel (segundo lançamento no turno).
+                _rolandoDadoInternet = true;
+                _tituloDado = "Role para definir o aluguel!";
+                StateHasChanged();
+
+                if (_dadoModal is not null)
+                    await _dadoModal.AbrirAsync();
+            }
+            else
+            {
+                // Não tinha saldo: compra pulada, mostra o modal informativo da casa.
+                await RecarregarAsync();
+                AbrirModalCasa();
+            }
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
+    }
+
+    // Comprou a companhia pelo modal (valor escolhido pelo jogador).
+    private async Task OnCompanhiaCompradaAsync(decimal valorPago)
+    {
+        if (_jogadorAtual is null) return;
+
+        // efeito de bloqueio tem prioridade
+        if (await VerificarBloqueioCompraAsync())
+            return;
+
+        try
+        {
+            var r = await AcaoCasaService.ComprarCompanhiaAsync(IdPartida, _jogadorAtual.IdPartidaJogador, valorPago);
+            await TocarSomAsync("compra");
+            _msgSimulacao = $"Comprou {r.Nome} por R$ {r.ValorPago:N2} (aluguel R$ {r.AluguelCalculado:N2}).";
+            await RecarregarAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
+
+        StateHasChanged();
+    }
+
+    private void AbrirModalCasa()
+    {
+        if (_dadosCasa is not null)
+            _modalCasaAberto = true;
+    }
+
+    private void FecharModalCasa()
+    {
+        _modalCasaAberto = false;
+    }
+
+    private async Task FecharModalBonus()
+    {
+        _modalBonusAberto = false;
+        // Depois do bônus, mostra o modal seguinte (companhia ou casa).
+        await AbrirModalPosCasaAsync();
+    }
+
+    // Ações disparadas de dentro do modal central: agem e fecham o modal
+    // (a pendência de pagar, se houver, continua travando o Finalizar na tela).
+    private async Task ComprarNoModalAsync()
+    {
+        // efeito de bloqueio tem prioridade (fecha o modal e avisa)
+        if (await VerificarBloqueioCompraAsync())
+        {
+            FecharModalCasa();
+            return;
+        }
+
+        await ComprarAsync();
+        FecharModalCasa();
+    }
+
+    private async Task AddCasaNoModalAsync()
+    {
+        await AddCasaAsync();
+    }
+
+    private async Task AddHotelNoModalAsync()
+    {
+        await AddHotelAsync();
     }
 
     private async Task PagarAsync()
     {
         if (_estadoJogador is null) return;
 
-        // O débito do aluguel já ocorre em AoCairNaCasa; aqui apenas conclui a ação pendente.
-        await AcaoCasaService.ConcluirAcaoCasaAsync(IdPartida, _estadoJogador.IdPartidaJogador);
+        try
+        {
+            var r = await AcaoCasaService.PagarAluguelAsync(IdPartida, _estadoJogador.IdPartidaJogador);
+            _ultimoPagamento = r;
 
-        _ultimaAcaoCasa = null;
-        _msgSimulacao = "Pagamento concluído.";
+            if (r.Imune)
+            {
+                _ultimaAcaoCasa = null;
+                await RecarregarAsync();
+                await AbrirModalImunidadeAsync("Imune ao aluguel!", "Você ficou imune ao pagamento deste aluguel!", "bi-house-slash");
+                return;
+            }
+
+            if (r.Eliminado)
+            {
+                _msgSimulacao = $"Sem saldo nem propriedades suficientes. Jogador eliminado. Pagou R$ {r.ValorPago:N2}.";
+                await TocarSomAsync("eliminado");
+            }
+            else if (r.PrecisaVender)
+                _msgSimulacao = $"Saldo insuficiente. Venda propriedades: deve R$ {r.AluguelDevido:N2}, pode levantar R$ {r.PotencialVenda:N2}.";
+            else
+            {
+                _msgSimulacao = $"Aluguel pago: R$ {r.ValorPago:N2}.";
+                await TocarSomAsync("aluguel");
+            }
+
+            if (r.Pago || r.Eliminado)
+                _ultimaAcaoCasa = null;
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
+
         await RecarregarAsync();
     }
 
@@ -1254,33 +3657,104 @@
     {
         if (_estadoJogador is null || !PodeFinalizar) return;
 
-        await AcaoCasaService.DefinirEstadoTurnoAsync(
-            IdPartida, _estadoJogador.IdPartidaJogador,
-            BancoImobiliario.Models.Enums.EstadoTurnoJogador.AguardandoVez);
+        try
+        {
+            // Se tentou comprar com bloqueio ativo nesta jogada, agora o efeito é
+            // consumido (foi "usado" ao tentar). Se não tentou, permanece.
+            if (_tentouComprarBloqueado)
+            {
+                await AcaoCasaService.ConsumirEfeitoSeAtivoAsync(
+                    IdPartida, _estadoJogador.IdPartidaJogador, AcaoCasaService.EF_BLOQUEIO_COMPRA);
+                _tentouComprarBloqueado = false;
+            }
 
-        _ultimaAcaoCasa = null;
-        _msgSimulacao = "Jogada finalizada.";
+            // Se está cumprindo prisão nesta vez, consome uma rodada antes de passar.
+            if (_estaPresoNestaVez)
+            {
+                await AcaoCasaService.ProcessarInicioVezPrisaoAsync(IdPartida, _estadoJogador.IdPartidaJogador);
+
+                // Se esta era a última rodada (TurnosPreso era 1 -> agora 0),
+                // marca para mostrar "A liberdade cantou!" na próxima vez dele.
+                if (_estadoJogador.TurnosPreso <= 1)
+                    _idJogadorLibertando = _estadoJogador.IdPartidaJogador;
+
+                _estaPresoNestaVez = false;
+                _prisaoModoContador = false;
+                _modalPrisaoAberto = false;
+            }
+
+            await PartidaService.PassarVezAsync(IdPartida, _estadoJogador.IdPartidaJogador);
+            _ultimaAcaoCasa = null;
+            _dadosCasa = null;
+            _msgSimulacao = "Jogada finalizada.";
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
+
         await RecarregarAsync();
+        StateHasChanged();
+
+        // Se a vez passou para alguém preso, trata; senão, se for bot, joga.
+        if (await VerificarPrisaoVezAsync())
+            return;
+
+        await VerificarTurnoBotAsync();
     }
 
-    // TODO: implementar desistência (marca status, libera propriedades etc.).
-    private Task DesistirAsync()
+    private async Task DesistirAsync()
     {
-        _msgSimulacao = "Desistir: a implementar.";
-        return Task.CompletedTask;
+        if (_estadoJogador is null) return;
+
+        try
+        {
+            await PartidaService.DesistirAsync(IdPartida, _estadoJogador.IdPartidaJogador);
+            _ultimaAcaoCasa = null;
+            _dadosCasa = null;
+            _msgSimulacao = "Você desistiu da partida.";
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
+
+        await RecarregarAsync();
+        StateHasChanged();
     }
 
-    // TODO: implementar construção de casa/hotel (debita custo, incrementa QtdCasas/QtdHoteis).
-    private Task AddCasaAsync()
+    private async Task AddCasaAsync()
     {
-        _msgSimulacao = "Construção de casa: a implementar.";
-        return Task.CompletedTask;
+        if (_estadoJogador is null || _dadosCasa is null) return;
+        try
+        {
+            var r = await AcaoCasaService.AdicionarCasaAsync(IdPartida, _estadoJogador.IdPartidaJogador);
+            await TocarSomAsync("construir");
+            _msgSimulacao = $"Casa construída (-R$ {r.CustoPago:N2}). Aluguel agora R$ {r.NovoAluguel:N2}.";
+            _dadosCasa = await AcaoCasaService.MontarDadosCasaAsync(IdPartida, _dadosCasa.Posicao, _jogadorAtual!.IdPartidaJogador, _debug);
+            await RecarregarAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
     }
 
-    private Task AddHotelAsync()
+    private async Task AddHotelAsync()
     {
-        _msgSimulacao = "Construção de hotel: a implementar.";
-        return Task.CompletedTask;
+        if (_estadoJogador is null || _dadosCasa is null) return;
+        try
+        {
+            var r = await AcaoCasaService.AdicionarHotelAsync(IdPartida, _estadoJogador.IdPartidaJogador);
+            await TocarSomAsync("construir");
+            _msgSimulacao = $"Hotel construído (-R$ {r.CustoPago:N2}). Aluguel agora R$ {r.NovoAluguel:N2}.";
+            _dadosCasa = await AcaoCasaService.MontarDadosCasaAsync(IdPartida, _dadosCasa.Posicao, _jogadorAtual!.IdPartidaJogador, _debug);
+            await RecarregarAsync();
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
     }
 
     private bool PodeComprarAtual()
@@ -1293,7 +3767,6 @@
         return saldo >= preco;
     }
 
-    // Add. Casa: é dono e ainda não atingiu o máximo de casas por propriedade.
     private bool PodeAddCasaAtual()
     {
         if (_dadosCasa is null || _config is null || !_dadosCasa.EhDonoJogadorDaVez)
@@ -1302,7 +3775,6 @@
         return _dadosCasa.QtdCasas < _config.QtdMaxCasas;
     }
 
-    // Add. Hotel: é dono, tem casas suficientes (>= MinCasasParaHotel) e não atingiu o máximo de hotéis.
     private bool PodeAddHotelAtual()
     {
         if (_dadosCasa is null || _config is null || !_dadosCasa.EhDonoJogadorDaVez)
@@ -1312,6 +3784,32 @@
             && _dadosCasa.QtdHoteis < _config.QtdMaxHoteis;
     }
 
+    // ========================================
+    // PEÕES
+    // ========================================
+
+    private bool TemPeao(int posicao)
+        => _posicoesJogadores.Any(p => p.Posicao == posicao);
+
+    // Borda (anel) da casa: cor do jogador. Vários jogadores = degradê cônico.
+    private string EstiloPeoes(int posicao)
+    {
+        var cores = _posicoesJogadores
+            .Where(p => p.Posicao == posicao)
+            .Select(p => string.IsNullOrWhiteSpace(p.CorHex) ? CorNeutra : p.CorHex)
+            .ToList();
+
+        if (cores.Count == 0)
+            return string.Empty;
+
+        if (cores.Count == 1)
+            return $"--peao-ring:{cores[0]};";
+
+        var stops = string.Join(",", cores);
+        return $"--peao-ring:transparent; box-shadow:0 6px 16px rgba(0,0,0,.5); "
+             + $"outline:3px solid transparent; border-image:conic-gradient({stops}) 1;";
+    }
+
     private static string CorDaCasa(TabuleiroCasaDTO casa)
     {
         return string.IsNullOrWhiteSpace(casa.CorHexadecimal)
@@ -1319,7 +3817,6 @@
             : casa.CorHexadecimal;
     }
 
-    // Cor de um grupo: usa a cor de qualquer casa daquele GrupoId (todas compartilham a cor).
     private string CorDoGrupo(int grupoId)
     {
         var casa = _casas.FirstOrDefault(c => c.GrupoId == grupoId);
@@ -1345,6 +3842,145 @@
             return partes[0][0].ToString().ToUpperInvariant();
 
         return $"{partes[0][0]}{partes[^1][0]}".ToUpperInvariant();
+    }
+
+    private async Task TocarSomAsync(string nome)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("jogoAudio.tocar", nome);
+        }
+        catch
+        {
+            /* som opcional */
+        }
+    }
+
+    // ========================================
+    // TURNO DO BOT (automático, animado)
+    // ========================================
+
+    // Verifica se o jogador da vez é um bot e, se for, conduz o turno dele.
+    // Encadeia: ao terminar, passa a vez; se o próximo também for bot, repete.
+    private async Task VerificarTurnoBotAsync()
+    {
+        if (_botJogando) return;
+
+        // O jogador da vez é bot e está aguardando o dado?
+        var vez = _posicoesJogadores
+            .FirstOrDefault(p => p.EstadoTurno == (int)EstadoTurnoJogador.AguardandoDado && p.EhBot);
+
+        if (vez is null) return;
+
+        _botJogando = true;
+
+        try
+        {
+            // pequeno respiro antes de o bot começar
+            await Task.Delay(700);
+
+            var bot = vez;
+            while (bot is not null)
+            {
+                await AnimarTurnoBotAsync(bot.IdPartidaJogador);
+
+                // passa a vez no servidor
+                var proximoId = await PartidaService.PassarVezAsync(IdPartida, bot.IdPartidaJogador);
+                await RecarregarAsync();
+                StateHasChanged();
+
+                // o próximo é bot? continua a cadeia; senão, devolve ao humano
+                bot = _posicoesJogadores
+                    .FirstOrDefault(p => p.IdPartidaJogador == proximoId && p.EhBot
+                        && p.EstadoTurno == (int)EstadoTurnoJogador.AguardandoDado);
+
+                if (bot is not null)
+                    await Task.Delay(700);
+            }
+        }
+        catch (Exception ex)
+        {
+            _msgSimulacao = ex.InnerException?.Message ?? ex.Message;
+        }
+        finally
+        {
+            // Ao devolver a vez ao humano, garante que nenhum modal do bot
+            // fique aberto. O modal da casa só deve abrir quando o jogador
+            // da vez CAIR numa casa, não na troca de turno.
+            _modalCasaAberto = false;
+            _modalBonusAberto = false;
+            _msgBot = null;
+            _dadosCasa = null;
+            _botJogando = false;
+            StateHasChanged();
+        }
+
+        // A vez voltou ao humano: se ele estiver preso, trata (decrementa e passa).
+        await VerificarPrisaoVezAsync();
+    }
+
+    // Toca o roteiro de um turno do bot: dado auto -> bônus -> casa -> decisão.
+    private async Task AnimarTurnoBotAsync(int idBot)
+    {
+        var roteiro = await AcaoCasaService.JogarTurnoBotAsync(IdPartida, idBot);
+
+        _tituloDado = $"Vez de {roteiro.NomeJogador}";
+        StateHasChanged();
+
+        // 1. Dado automático (gira e para sozinho no valor)
+        if (_dadoModal is not null)
+            await _dadoModal.AbrirAutomaticoAsync(roteiro.ValorDado);
+
+        // 2. Atualiza tabuleiro (peão move)
+        await RecarregarAsync();
+        StateHasChanged();
+
+        // 3. Bônus de volta (auto-fecha)
+        if (roteiro.CompletouVolta && roteiro.BonusVolta > 0)
+        {
+            _bonusVoltaValor = roteiro.BonusVolta;
+            _modalBonusAberto = true;
+            await TocarSomAsync("bonus");
+            StateHasChanged();
+            await Task.Delay(2800);
+            _modalBonusAberto = false;
+            StateHasChanged();
+        }
+
+        // 4. Modal da casa com "pensando" e a decisão
+        if (roteiro.PosicaoFinal > 0)
+        {
+            _dadosCasa = await AcaoCasaService.MontarDadosCasaAsync(
+                IdPartida, roteiro.PosicaoFinal, idBot, _debug);
+            _modalCasaAberto = true;
+            _msgBot = "Pensando...";
+            StateHasChanged();
+            await Task.Delay(2500);
+
+            // som conforme a ação
+            switch (roteiro.Acao)
+            {
+                case AcaoCasaService.AcaoBot.Comprou:
+                    await TocarSomAsync("compra");
+                    break;
+                case AcaoCasaService.AcaoBot.PagouAluguel:
+                    // casa de imposto (tipo 3) tem som próprio
+                    await TocarSomAsync(roteiro.TipoCasaId == 3 ? "impostos" : "aluguel");
+                    break;
+                case AcaoCasaService.AcaoBot.Eliminado:
+                    await TocarSomAsync("eliminado");
+                    break;
+            }
+
+            _msgBot = roteiro.Mensagem;
+            _msgSimulacao = roteiro.Mensagem;
+            StateHasChanged();
+
+            await Task.Delay(3000);
+            _modalCasaAberto = false;
+            _msgBot = null;
+            StateHasChanged();
+        }
     }
 
     private sealed class CelulaTabuleiro

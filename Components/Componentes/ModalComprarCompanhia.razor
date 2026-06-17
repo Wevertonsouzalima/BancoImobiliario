@@ -1,0 +1,429 @@
+@using BancoImobiliario.Services.Jogo
+
+@* ============================================================
+   Modal de compra de companhia normal.
+   O jogador digita quanto quer pagar (1 até o saldo) e vê em tempo real
+   o aluguel resultante (valor x PorcValor%). Compra é opcional (pode fechar).
+
+   Uso:
+     <ModalComprarCompanhia @ref="_modalCompanhia"
+                            AoComprar="OnCompanhiaComprada" />
+     // abrir:
+     await _modalCompanhia.AbrirAsync(dados);   // dados = DadosCompraCompanhia
+   ============================================================ *@
+
+<div class="comp-overlay" style="@(_aberto ? "" : "display:none;")">
+    <div class="comp-modal">
+
+        <button type="button" class="comp-x" @onclick="Fechar" title="Fechar">
+            <i class="bi bi-x-lg"></i>
+        </button>
+
+        @if (_dados is not null)
+        {
+            @if (_dados.IsRevelada)
+            {
+                <div class="comp-header">
+                    @if (!string.IsNullOrWhiteSpace(_dados.Imagem))
+                    {
+                        <div class="comp-img" style="background-image:url('/imagens/@_dados.Imagem');"></div>
+                    }
+                    <div>
+                        <span class="comp-eyebrow">Companhia</span>
+                        <h3>@_dados.Nome</h3>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(_dados.Frase))
+                {
+                    <p class="comp-frase">@_dados.Frase</p>
+                }
+
+                <div class="comp-info">
+                    <div>
+                        <span class="comp-label">Retorno (aluguel)</span>
+                        <strong>@_dados.PorcValor.ToString("N0")%</strong>
+                    </div>
+                    <div>
+                        <span class="comp-label">Seu saldo</span>
+                        <strong>R$ @_dados.SaldoDisponivel.ToString("N2")</strong>
+                    </div>
+                </div>
+            }
+            else
+            {
+                @* Companhia NÃO revelada: compra totalmente às cegas. *@
+                <div class="comp-header">
+                    <div class="comp-img comp-img-misterio">
+                        <i class="bi bi-question-lg"></i>
+                    </div>
+                    <div>
+                        <span class="comp-eyebrow">Companhia</span>
+                        <h3>Companhia misteriosa</h3>
+                    </div>
+                </div>
+
+                <p class="comp-frase">
+                    Você não sabe qual companhia é, nem o retorno do aluguel.
+                    Escolha quanto arriscar — só vai descobrir depois de comprar!
+                </p>
+
+                <div class="comp-info">
+                    <div class="comp-misterio-box">
+                        <span class="comp-label">Retorno (aluguel)</span>
+                        <strong>?</strong>
+                    </div>
+                    <div>
+                        <span class="comp-label">Seu saldo</span>
+                        <strong>R$ @_dados.SaldoDisponivel.ToString("N2")</strong>
+                    </div>
+                </div>
+            }
+
+            <label class="comp-campo">
+                <span>Quanto quer pagar?</span>
+                <input type="number" min="1" max="@_dados.SaldoDisponivel" step="1"
+                       @bind="_valor" @bind:event="oninput" />
+            </label>
+
+            @if (_dados.IsRevelada)
+            {
+                <div class="comp-preview">
+                    <i class="bi bi-arrow-right-circle"></i>
+                    <span>Aluguel resultante:</span>
+                    <strong>R$ @AluguelPreview().ToString("N2")</strong>
+                </div>
+            }
+            else
+            {
+                <div class="comp-preview comp-preview-misterio">
+                    <i class="bi bi-dice-3"></i>
+                    <span>Aluguel resultante:</span>
+                    <strong>? na sorte</strong>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_erro))
+            {
+                <div class="comp-erro">
+                    <i class="bi bi-exclamation-triangle"></i> @_erro
+                </div>
+            }
+
+            <div class="comp-acoes">
+                <button type="button" class="comp-btn cancelar" @onclick="Fechar">
+                    Não comprar
+                </button>
+                <button type="button" class="comp-btn comprar"
+                        disabled="@(!ValorValido())"
+                        @onclick="ConfirmarAsync">
+                    <i class="bi bi-cash-coin"></i>
+                    Comprar
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .comp-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(2, 6, 23, .8);
+        backdrop-filter: blur(3px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1300;
+        padding: 1rem;
+    }
+
+    .comp-modal {
+        position: relative;
+        width: min(94vw, 430px);
+        border: 1px solid rgba(96, 165, 250, .25);
+        border-radius: 20px;
+        background: linear-gradient(160deg, rgba(15,23,42,.99), rgba(2,6,23,.99));
+        box-shadow: 0 30px 70px rgba(0,0,0,.6);
+        padding: 1.5rem;
+    }
+
+    .comp-x {
+        position: absolute;
+        top: .6rem;
+        right: .6rem;
+        width: 32px;
+        height: 32px;
+        border: 0;
+        border-radius: 9px;
+        background: rgba(148, 163, 184, .18);
+        color: #e5e7eb;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+        .comp-x:hover {
+            background: rgba(148, 163, 184, .3);
+        }
+
+    .comp-header {
+        display: flex;
+        align-items: center;
+        gap: .8rem;
+        margin-bottom: .75rem;
+    }
+
+    .comp-img {
+        width: 56px;
+        height: 56px;
+        border-radius: 12px;
+        background-size: cover;
+        background-position: center;
+        flex-shrink: 0;
+        border: 1px solid rgba(148, 163, 184, .25);
+    }
+
+    .comp-img-misterio {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle at 50% 40%, rgba(96,165,250,.3), transparent 65%), linear-gradient(150deg, #1b2540, #0d1426 70%);
+        color: #93c5fd;
+        font-size: 1.8rem;
+        text-shadow: 0 0 12px rgba(96,165,250,.8);
+    }
+
+    .comp-misterio-box strong {
+        color: #93c5fd;
+        font-size: 1.4rem;
+    }
+
+    .comp-preview-misterio {
+        background: rgba(96, 165, 250, .12) !important;
+        border-color: rgba(96, 165, 250, .3) !important;
+    }
+
+        .comp-preview-misterio i {
+            color: #93c5fd !important;
+        }
+
+        .comp-preview-misterio strong {
+            color: #93c5fd !important;
+        }
+
+    .comp-eyebrow {
+        color: #60a5fa;
+        font-size: .65rem;
+        font-weight: 800;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+    }
+
+    .comp-header h3 {
+        margin: .1rem 0 0;
+        color: #e5e7eb;
+        font-size: 1.15rem;
+    }
+
+    .comp-frase {
+        color: #94a3b8;
+        font-size: .82rem;
+        font-style: italic;
+        margin: 0 0 1rem;
+        line-height: 1.4;
+    }
+
+    .comp-info {
+        display: flex;
+        gap: .75rem;
+        margin-bottom: 1rem;
+    }
+
+        .comp-info > div {
+            flex: 1;
+            background: rgba(15, 23, 42, .55);
+            border: 1px solid rgba(148, 163, 184, .14);
+            border-radius: 10px;
+            padding: .55rem .7rem;
+        }
+
+    .comp-label {
+        display: block;
+        color: #94a3b8;
+        font-size: .68rem;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        margin-bottom: .15rem;
+    }
+
+    .comp-info strong {
+        color: #e5e7eb;
+        font-size: 1rem;
+    }
+
+    .comp-campo {
+        display: block;
+        margin-bottom: 1rem;
+    }
+
+        .comp-campo span {
+            display: block;
+            color: #cbd5e1;
+            font-weight: 700;
+            font-size: .85rem;
+            margin-bottom: .35rem;
+        }
+
+        .comp-campo input {
+            width: 100%;
+            padding: .65rem .8rem;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, .3);
+            background: #0b1120;
+            color: #e5e7eb;
+            font-weight: 800;
+            font-size: 1.1rem;
+        }
+
+    .comp-preview {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .65rem .8rem;
+        border-radius: 10px;
+        background: rgba(34, 197, 94, .12);
+        border: 1px solid rgba(34, 197, 94, .3);
+        margin-bottom: 1rem;
+    }
+
+        .comp-preview i {
+            color: #86efac;
+        }
+
+        .comp-preview span {
+            color: #cbd5e1;
+            font-size: .85rem;
+        }
+
+        .comp-preview strong {
+            color: #86efac;
+            font-size: 1.1rem;
+            margin-left: auto;
+        }
+
+    .comp-erro {
+        display: flex;
+        align-items: center;
+        gap: .4rem;
+        color: #fca5a5;
+        font-size: .82rem;
+        margin-bottom: 1rem;
+    }
+
+    .comp-acoes {
+        display: flex;
+        gap: .6rem;
+    }
+
+    .comp-btn {
+        flex: 1;
+        min-height: 46px;
+        border: 0;
+        border-radius: 14px;
+        font-weight: 900;
+        font-size: .95rem;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: .4rem;
+        transition: 150ms ease;
+    }
+
+        .comp-btn.cancelar {
+            background: rgba(148, 163, 184, .18);
+            color: #e5e7eb;
+        }
+
+            .comp-btn.cancelar:hover {
+                background: rgba(148, 163, 184, .28);
+            }
+
+        .comp-btn.comprar {
+            background: linear-gradient(135deg, #16a34a, #22c55e);
+            color: white;
+        }
+
+            .comp-btn.comprar:hover {
+                filter: brightness(1.08);
+            }
+
+            .comp-btn.comprar:disabled {
+                opacity: .5;
+                cursor: not-allowed;
+                filter: none;
+            }
+</style>
+
+@code {
+    [Parameter] public EventCallback<decimal> AoComprar { get; set; }
+
+    private bool _aberto;
+    private AcaoCasaService.DadosCompraCompanhia? _dados;
+    private decimal _valor;
+    private string? _erro;
+
+    public async Task AbrirAsync(AcaoCasaService.DadosCompraCompanhia dados)
+    {
+        _dados = dados;
+        _valor = 0m;
+        _erro = null;
+        _aberto = true;
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    public void Fechar()
+    {
+        _aberto = false;
+        StateHasChanged();
+    }
+
+    private decimal AluguelPreview()
+    {
+        if (_dados is null) return 0m;
+        return Math.Round(_valor * (_dados.PorcValor / 100m), 2, MidpointRounding.AwayFromZero);
+    }
+
+    private bool ValorValido()
+    {
+        if (_dados is null) return false;
+        return _valor >= 1m && _valor <= _dados.SaldoDisponivel;
+    }
+
+    private async Task ConfirmarAsync()
+    {
+        if (_dados is null) return;
+
+        if (_valor < 1m)
+        {
+            _erro = "O valor deve ser ao menos R$ 1,00.";
+            return;
+        }
+
+        if (_valor > _dados.SaldoDisponivel)
+        {
+            _erro = "Valor acima do seu saldo.";
+            return;
+        }
+
+        var valor = _valor;
+        _aberto = false;
+        StateHasChanged();
+
+        if (AoComprar.HasDelegate)
+            await AoComprar.InvokeAsync(valor);
+    }
+}

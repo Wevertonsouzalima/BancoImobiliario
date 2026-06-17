@@ -10,6 +10,11 @@
         FoiPreso = 5,
         Efeito = 6,
         Especial = 7,
+        PodeComprarCompanhia = 8,   // <-- adicione esta linha
+        PodeComprarInternet = 9,
+        PodeComprarBusiness  = 10,   // Business (aquisição grátis)
+        PodeComprarXerox     = 11,   // Xerox (compra + copia aluguel de outra)
+
         ADefinir = 99
     }
 }

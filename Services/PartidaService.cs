@@ -805,8 +805,17 @@ public class PartidaService
             {
                 jogador.IdStatusJogador = (int)StatusJogadorPartida.Jogando;
                 jogador.SaldoAtual = Convert.ToDecimal(configuracao.ValorInicial);
+                jogador.EstadoTurno = (int)EstadoTurnoJogador.AguardandoVez;
+                jogador.PodeFinalizar = false;
+                jogador.PosicaoAtual = 0;       // 0 = fora do tabuleiro (largada)
+                jogador.VoltasCompletadas = 0;
+                jogador.TurnosPreso = 0;
                 jogador.DataAtualizacao = DateTime.Now;
             }
+
+            // O primeiro da ordem começa podendo jogar o dado.
+            var primeiro = jogadoresAtivos.OrderBy(x => x.OrdemTurno ?? 9999).First();
+            primeiro.EstadoTurno = (int)EstadoTurnoJogador.AguardandoDado;
 
             partida.IdStatusPartida = (int)StatusPartida.EmAndamento;
             partida.DataInicio = DateTime.Now;
@@ -1860,6 +1869,206 @@ public class PartidaService
             }
 
             return x.Jogador.OrdemJogador.CompareTo(y.Jogador.OrdemJogador);
+        }
+    }
+
+    // ============================================================
+    // Cole estes métodos na classe PartidaService (junto dos demais).
+    //
+    // - ObterPosicoesJogadoresAsync: posições para desenhar os peões.
+    // - PassarVezAsync: encerra o turno do jogador atual e passa ao próximo
+    //   na ordem (pulando eliminados). Marca o próximo como AguardandoDado.
+    //   Se sobrar só um jogador ativo, encerra a partida (vencedor).
+    // - DesistirAsync: marca o jogador como Eliminado, devolve propriedades
+    //   ao banco, e passa a vez.
+    //
+    // usings necessários (já existem no PartidaService):
+    //   using BancoImobiliario.Models.Casas;  // PartidaTabuleiro
+    //   using BancoImobiliario.Models.DTOs.Jogo;
+    //   using BancoImobiliario.Models.Enums;
+    // ============================================================
+
+    /// <summary>
+    /// Retorna a posição de cada jogador ativo (jogando) no tabuleiro,
+    /// para a tela desenhar os peões/bordas coloridas.
+    /// </summary>
+    public async Task<List<JogadorPosicaoDTO>> ObterPosicoesJogadoresAsync(
+        int idPartida,
+        CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var jogadores = await context.Tb_PartidaJogadores
+            .AsNoTracking()
+            .Where(x => x.IdPartida == idPartida &&
+                        x.IdStatusJogador == (int)StatusJogadorPartida.Jogando)
+            .OrderBy(x => x.OrdemTurno ?? 9999)
+            .ToListAsync(cancellationToken);
+
+        return jogadores
+            .Select(x => new JogadorPosicaoDTO
+            {
+                IdPartidaJogador = x.IdPartidaJogador,
+                NomeJogador = x.NomeJogador,
+                Posicao = x.PosicaoAtual <= 0 ? 1 : x.PosicaoAtual,
+                CorHex = x.CorHex,
+                EhBot = x.TipoJogador == (int)TipoJogadorPartida.Bot,
+                OrdemTurno = x.OrdemTurno,
+                EstadoTurno = x.EstadoTurno
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Encerra o turno do jogador atual e passa a vez ao próximo na ordem
+    /// (pulando eliminados). O próximo entra em AguardandoDado.
+    /// Se sobrar apenas um jogador ativo, a partida é encerrada (vencedor).
+    /// </summary>
+    public async Task<int?> PassarVezAsync(
+        int idPartida,
+        int idPartidaJogadorAtual,
+        CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            var partida = await context.Tb_Partidas
+                .FirstOrDefaultAsync(x => x.IdPartida == idPartida, cancellationToken);
+
+            if (partida == null)
+                throw new InvalidOperationException("Partida nao encontrada.");
+
+            var ativos = await context.Tb_PartidaJogadores
+                .Where(x => x.IdPartida == idPartida &&
+                            x.IdStatusJogador == (int)StatusJogadorPartida.Jogando)
+                .OrderBy(x => x.OrdemTurno ?? 9999)
+                .ToListAsync(cancellationToken);
+
+            // Fim de jogo: sobrou um (ou nenhum).
+            if (ativos.Count <= 1)
+            {
+                var vencedor = ativos.FirstOrDefault();
+
+                partida.IdStatusPartida = (int)StatusPartida.Finalizada;
+                partida.DataFim = DateTime.Now;
+                partida.DataAtualizacao = DateTime.Now;
+
+                await context.SaveChangesAsync(cancellationToken);
+
+                await RegistrarEventoAsync(
+                    context, idPartida, vencedor?.IdPartidaJogador,
+                    TipoEventoPartida.PartidaFinalizada,
+                    vencedor is not null
+                        ? $"Partida finalizada. Vencedor: {vencedor.NomeJogador}."
+                        : "Partida finalizada.",
+                    cancellationToken);
+
+                await transaction.CommitAsync(cancellationToken);
+                return vencedor?.IdPartidaJogador;
+            }
+
+            var atual = ativos.FirstOrDefault(x => x.IdPartidaJogador == idPartidaJogadorAtual);
+
+            // Encerra o turno do atual.
+            if (atual is not null)
+            {
+                atual.EstadoTurno = (int)EstadoTurnoJogador.AguardandoVez;
+                atual.PodeFinalizar = false;
+                atual.DataAtualizacao = DateTime.Now;
+            }
+
+            // Próximo na ordem (circular), pulando o atual.
+            var ordemAtual = atual?.OrdemTurno ?? ativos.First().OrdemTurno ?? 1;
+
+            var proximo = ativos
+                .Where(x => (x.OrdemTurno ?? 9999) > ordemAtual)
+                .OrderBy(x => x.OrdemTurno)
+                .FirstOrDefault()
+                ?? ativos.OrderBy(x => x.OrdemTurno).First(); // volta ao primeiro (nova rodada)
+
+            proximo.EstadoTurno = (int)EstadoTurnoJogador.AguardandoDado;
+            proximo.PodeFinalizar = false;
+            proximo.DataAtualizacao = DateTime.Now;
+
+            await context.SaveChangesAsync(cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+
+            return proximo.IdPartidaJogador;
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+
+            _logger.LogError(
+                ex,
+                "Erro ao passar a vez. IdPartida={IdPartida}; IdPartidaJogador={IdPartidaJogador}",
+                idPartida, idPartidaJogadorAtual);
+
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// O jogador desiste/é eliminado: status Eliminado, propriedades voltam ao
+    /// banco (continuam reveladas) e a vez passa ao próximo.
+    /// </summary>
+    public async Task DesistirAsync(
+        int idPartida,
+        int idPartidaJogador,
+        CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            var jogador = await context.Tb_PartidaJogadores
+                .FirstOrDefaultAsync(x => x.IdPartida == idPartida && x.IdPartidaJogador == idPartidaJogador, cancellationToken);
+
+            if (jogador == null)
+                throw new InvalidOperationException("Jogador nao encontrado.");
+
+            jogador.IdStatusJogador = (int)StatusJogadorPartida.Eliminado;
+            jogador.EstadoTurno = (int)EstadoTurnoJogador.AguardandoVez;
+            jogador.PodeFinalizar = false;
+            jogador.DataSaida = DateTime.Now;
+            jogador.DataAtualizacao = DateTime.Now;
+
+            var propriedades = await context.Set<PartidaTabuleiro>()
+                .Where(c => c.PartidaId == idPartida && c.ProprietarioId == idPartidaJogador)
+                .ToListAsync(cancellationToken);
+
+            foreach (var p in propriedades)
+            {
+                p.ProprietarioId = -1; // -1 = Banco (sem dono)
+                p.QtdCasas = 0;
+                p.QtdHoteis = 0;
+                p.DataAtualizacao = DateTime.Now;
+            }
+
+            await context.SaveChangesAsync(cancellationToken);
+
+            await RegistrarEventoAsync(
+                context, idPartida, jogador.IdPartidaJogador,
+                TipoEventoPartida.JogadorSaiu,
+                $"{jogador.NomeJogador} desistiu da partida.",
+                cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+
+            _logger.LogError(
+                ex,
+                "Erro ao desistir. IdPartida={IdPartida}; IdPartidaJogador={IdPartidaJogador}",
+                idPartida, idPartidaJogador);
+
+            throw;
         }
     }
 }

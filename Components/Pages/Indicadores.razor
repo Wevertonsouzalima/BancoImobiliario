@@ -1,0 +1,209 @@
+﻿@using DllTeste.Componentes
+@using DllTeste.Componentes.Confirmacao
+@using DllTeste.Componentes.Dados
+@using DllTeste.Componentes.Toasts
+
+@page "/demonstracao-padrao"
+@inject IToastService Toasts
+@inject IConfirmacaoService Confirmacao
+
+@*
+    Pagina de demonstracao dos componentes padrao.
+    O botao "Alternar tema" aplica .pd-tema-claro / .pd-tema-escuro no wrapper,
+    entao voce ve as duas variacoes na hora.
+
+    IMPORTANTE: Toasts e Confirmacao precisam de <ToastContainer /> e
+    <ConfirmacaoDialog /> registrados no MainLayout (veja o README).
+*@
+
+<div class="@_classeTema demo">
+    <div class="demo__topo">
+        <h1 class="demo__h1">Componentes padrão</h1>
+        <Botao Icone="@(_escuro ? "bi-sun" : "bi-moon-stars")"
+               Texto="@(_escuro ? "Tema claro" : "Tema escuro")"
+               Variante="BotaoVariante.Secundario"
+               OnClick="AlternarTema" />
+    </div>
+
+    <!-- BOTOES -->
+    <Cartao Titulo="Botões" Icone="bi-hand-index" Class="demo__bloco">
+        <div class="demo__linha">
+            <Botao Texto="Primário" Icone="bi-check2" />
+            <Botao Texto="Sucesso" Variante="BotaoVariante.Sucesso" Icone="bi-check-circle" />
+            <Botao Texto="Perigo" Variante="BotaoVariante.Perigo" Icone="bi-trash" />
+            <Botao Texto="Aviso" Variante="BotaoVariante.Aviso" Icone="bi-exclamation-triangle" />
+            <Botao Texto="Info" Variante="BotaoVariante.Info" Icone="bi-info-circle" />
+            <Botao Texto="Neutro" Variante="BotaoVariante.Neutro" />
+            <Botao Texto="Secundário" Variante="BotaoVariante.Secundario" />
+            <Botao Texto="Fantasma" Variante="BotaoVariante.Fantasma" Icone="bi-gear" />
+        </div>
+        <div class="demo__linha">
+            <Botao Texto="Pequeno" Tamanho="sm" />
+            <Botao Texto="Médio" Tamanho="md" />
+            <Botao Texto="Grande" Tamanho="lg" />
+            <Botao Texto="Carregando" Carregando="true" />
+            <Botao Texto="Desabilitado" Desabilitado="true" />
+        </div>
+    </Cartao>
+
+    <!-- CARTAO -->
+    <Cartao Titulo="Cartão com rodapé" Icone="bi-window" Class="demo__bloco">
+        <AcoesCabecalho>
+            <Botao Variante="BotaoVariante.Fantasma" Icone="bi-three-dots" Tamanho="sm" />
+        </AcoesCabecalho>
+
+        <Rodape>
+            <Botao Variante="BotaoVariante.Secundario" Texto="Cancelar" />
+            <Botao Texto="Salvar" Icone="bi-save" />
+        </Rodape>
+    </Cartao>
+
+    <!-- FEEDBACK -->
+    <Cartao Titulo="Feedback" Icone="bi-bell" Class="demo__bloco">
+        <div class="demo__linha">
+            <Botao Texto="Abrir modal" Icone="bi-window-stack" OnClick="() => _modalAberto = true" />
+            <Botao Texto="Toast sucesso" Variante="BotaoVariante.Sucesso"
+                   OnClick="@(() => Toasts.Sucesso("Operação concluída com êxito."))" />
+            <Botao Texto="Toast erro" Variante="BotaoVariante.Perigo"
+                   OnClick="@(() => Toasts.Erro("Falha ao processar.", "Atenção"))" />
+            <Botao Texto="Toast info" Variante="BotaoVariante.Info"
+                   OnClick="@(() => Toasts.Info("Sincronização agendada."))" />
+            <Botao Texto="Confirmar exclusão" Variante="BotaoVariante.Perigo"
+                   Icone="bi-trash" OnClick="ConfirmarExclusao" />
+        </div>
+    </Cartao>
+
+    <!-- CAMPOS -->
+    <Cartao Titulo="Campos de seleção e data" Icone="bi-input-cursor-text" Class="demo__bloco">
+        <div class="demo__grade">
+            <div>
+                <label class="demo__rotulo">Tabuleiro (SelectBusca)</label>
+                <SelectBusca Opcoes="_tabuleiros" @bind-Valor="_idTabuleiro"
+                             Placeholder="Selecione um tabuleiro" />
+            </div>
+            <div>
+                <label class="demo__rotulo">Modos de jogo (MultiSelect)</label>
+                <MultiSelect Opcoes="_modos" @bind-Valores="_modosSelecionados"
+                             MaxChipsVisiveis="2" Placeholder="Selecione os modos" />
+            </div>
+            <div>
+                <CampoData @bind-Valor="_dataInicio" Rotulo="Data de início" />
+            </div>
+        </div>
+    </Cartao>
+
+    <!-- TABELA -->
+    <Cartao Titulo="Jogadores" Icone="bi-people" Class="demo__bloco" SemPaddingCorpo="true">
+        <Tabela TItem="Jogador"
+                Itens="_jogadores"
+                Selecionavel="true"
+                ItensPorPagina="5"
+                PlaceholderBusca="Buscar jogador..."
+                OnSelecaoMudou="AoSelecionar">
+            <ColunasDef>
+                <Coluna Titulo="Nome" Valor="j => j.Nome" />
+                <Coluna Titulo="Cor" Valor="j => j.Cor" Largura="140px" />
+                <Coluna Titulo="Saldo" Valor="j => j.Saldo" Classe="demo__num" Context="j">
+                    R$ @j.Saldo.ToString("N0")
+                </Coluna>
+                <Coluna Titulo="Tipo" Valor='@(j => j.Bot ? "CPU" : "Humano")' Largura="110px" Context="j">
+                    <span class="demo__badge">@(j.Bot ? "CPU" : "Humano")</span>
+                </Coluna>
+                <Coluna Titulo="Ações" Ordenavel="false" Largura="80px" Context="j">
+                    <Botao Variante="BotaoVariante.Fantasma" Icone="bi-pencil" Tamanho="sm" />
+                </Coluna>
+            </ColunasDef>
+        </Tabela>
+    </Cartao>
+</div>
+
+
+
+@code {
+    private bool _escuro = true;
+    private bool _modalAberto;
+
+    private string _classeTema => _escuro ? "pd-tema-escuro" : "pd-tema-claro";
+
+    private string? _idTabuleiro;
+    private List<string> _modosSelecionados = new();
+    private DateTime? _dataInicio = DateTime.Today;
+
+    private readonly List<OpcaoSelect> _tabuleiros = new()
+    {
+        new("1", "Padrão Diagonal 70") { Icone = "bi-grid-3x3" },
+        new("2", "Clássico") { Icone = "bi-grid" },
+        new("3", "Compacto") { Icone = "bi-grid-1x2" }
+    };
+
+    private readonly List<OpcaoSelect> _modos = new()
+    {
+        new("solo", "Solo"),
+        new("local", "Multiplayer local"),
+        new("rede", "Multiplayer em rede")
+    };
+
+    private readonly List<Jogador> _jogadores = new()
+    {
+        new("Ana", "Vermelho", 2500, false),
+        new("Bruno", "Azul", 1800, false),
+        new("CPU Verde", "Verde", 3200, true),
+        new("Diego", "Amarelo", 950, false),
+        new("CPU Roxo", "Roxo", 2100, true),
+        new("Elisa", "Laranja", 4100, false),
+        new("CPU Ciano", "Ciano", 1500, true)
+    };
+
+    private void AlternarTema()
+    {
+        _escuro = !_escuro;
+    }
+
+    private async Task ConfirmarExclusao()
+    {
+        var ok = await Confirmacao.ConfirmarAsync(new ConfirmacaoOpcoes
+        {
+            Titulo = "Excluir jogador",
+            Mensagem = "Esta ação não pode ser desfeita. Deseja continuar?",
+            TextoConfirmar = "Excluir",
+            Perigosa = true,
+            Icone = "bi-exclamation-triangle"
+        });
+
+        if (ok)
+        {
+            Toasts.Sucesso("Jogador excluído.");
+        }
+        else
+        {
+            Toasts.Info("Ação cancelada.");
+        }
+    }
+
+    private void SalvarModal()
+    {
+        _modalAberto = false;
+        Toasts.Sucesso("Dados salvos.");
+    }
+
+    private void AoSelecionar(IReadOnlyList<Jogador> selecionados)
+    {
+        // Aqui voce trataria a selecao. Exemplo: habilitar acoes em lote.
+    }
+
+    public sealed class Jogador
+    {
+        public Jogador(string nome, string cor, decimal saldo, bool bot)
+        {
+            Nome = nome;
+            Cor = cor;
+            Saldo = saldo;
+            Bot = bot;
+        }
+
+        public string Nome { get; set; }
+        public string Cor { get; set; }
+        public decimal Saldo { get; set; }
+        public bool Bot { get; set; }
+    }
+}

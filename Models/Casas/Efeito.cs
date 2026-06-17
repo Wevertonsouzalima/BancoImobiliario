@@ -1,5 +1,4 @@
-﻿using System;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BancoImobiliario.Models.Casas
@@ -9,43 +8,47 @@ namespace BancoImobiliario.Models.Casas
     {
         [Key]
         public int EfeitoId { get; set; }
+
+        /// <summary>1 = Normal, 2 = Grupo (EfeitoTipo). tinyint NOT NULL.</summary>
         public byte TipoEfeitoId { get; set; }
 
-        public byte AlvoEfeitoId { get; set; }
+        /// <summary>EfeitoAlvo. tinyint NULL.</summary>
+        public byte? AlvoEfeitoId { get; set; }
 
+        /// <summary>EfeitoSubAlvo. tinyint NULL.</summary>
         public byte? SubAlvoEfeitoId { get; set; }
 
-        public byte AcaoEfeitoId { get; set; }
+        /// <summary>EfeitoAcao. tinyint NULL.</summary>
+        public byte? AcaoEfeitoId { get; set; }
 
-        [Column(TypeName = "decimal(18, 2)")]
-        public decimal ValorEfeito { get; set; }
+        /// <summary>decimal NULL.</summary>
+        public decimal? ValorEfeito { get; set; }
 
-        [StringLength(500)]
         public string? Frase { get; set; }
-
-        [StringLength(250)]
         public string? Imagem { get; set; }
 
-        public bool AplicaAposVolta { get; set; }
+        /// <summary>bit NULL.</summary>
+        public bool? AplicaAposVolta { get; set; }
 
-        public bool RemoverAposVolta { get; set; }
+        /// <summary>bit NULL.</summary>
+        public bool? RemoverAposVolta { get; set; }
 
-        public bool ValorDependeDado { get; set; }
+        /// <summary>bit NULL.</summary>
+        public bool? ValorDependeDado { get; set; }
 
-        [Column(TypeName = "decimal(18, 2)")]
+        /// <summary>decimal NOT NULL.</summary>
         public decimal FatorMultiplicador { get; set; }
 
+        /// <summary>bit NOT NULL.</summary>
         public bool RegraEspecial { get; set; }
 
-        public bool AplicarEfeitoCasaAposEfeito { get; set; }
+        /// <summary>bit NULL.</summary>
+        public bool? AplicarEfeitoCasaAposEfeito { get; set; }
 
-        [StringLength(100)]
+        /// <summary>Identificador textual do efeito (código de regra). varchar(100) NULL.</summary>
         public string? ColunaEfeito { get; set; }
 
-        [Column(TypeName = "datetime2(0)")]
-        public DateTime DataCadastro { get; set; } = DateTime.Now;
-
-        [Column(TypeName = "datetime2(0)")]
+        public DateTime DataCadastro { get; set; }
         public DateTime? DataAtualizacao { get; set; }
     }
 }

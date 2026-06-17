@@ -6,5 +6,6 @@ public enum StatusJogadorPartida
     Pronto = 2,
     Jogando = 3,
     Saiu = 4,
-    Removido = 5
+    Removido = 5,
+    Eliminado= 6,
 }

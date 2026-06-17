@@ -1,0 +1,301 @@
+﻿@page "/exemplos"
+@using System.Globalization
+@using Componentes
+@using DllTeste.Componentes.Tabela
+
+<h3>Exemplos — BzGrid</h3>
+
+@if (!string.IsNullOrEmpty(_msg))
+{
+    <div class="aviso">@_msg <button class="aviso__x" @onclick="() => _msg = null">×</button></div>
+}
+
+@* =====================================================================
+   GRID 1 — PRODUTOS
+   Recursos: imagem (com fallback), ícones no cabeçalho, ordenação,
+   busca, paginação, seleção persistente, template (badge), formatação
+   de preço, coluna de ações e toolbar customizada.
+   ===================================================================== *@
+<section class="bloco">
+    <h4>1. Produtos — vitrine completa</h4>
+
+    <BzGrid TItem="Produto"
+            Itens="_produtos"
+            Carregando="_carregandoProdutos"
+            Selecionavel="true"
+            ChaveItem="p => p.Id"
+            @bind-Selecionados="_produtosSelecionados"
+            ItensPorPaginaPadrao="10"
+            PlaceholderBusca="Buscar produto ou categoria...">
+
+        <ToolbarContent>
+            <button class="btn btn--primario" @onclick='() => _msg = "Abrir formulário de novo produto"'>
+                <i class="fas fa-plus"></i> Novo
+            </button>
+            <button class="btn" @onclick="LimparSelecaoProdutos">Limpar seleção</button>
+            <button class="btn" @onclick="SimularCarregamento">Simular carregando</button>
+        </ToolbarContent>
+
+        <ChildContent>
+            <BzColunaImagem Titulo="Foto" Valor="p => p.ImagemUrl" Largura="80px" />
+            <BzColuna Titulo="Produto" Icone="fas fa-box" Valor="p => p.Nome" Ordenavel Largura="28%" />
+            <BzColuna Titulo="Categoria" Icone="fas fa-tag" Valor="p => p.Categoria" Ordenavel />
+            <BzColuna Titulo="Preço" Icone="fas fa-dollar-sign" Valor="p => p.Preco" Formatar="FormatarPreco"
+                      Ordenavel Alinhamento="BzAlinhamento.Direita" Largura="120px" />
+            <BzColuna Titulo="Estoque" Valor="p => p.Estoque" Ordenavel Alinhamento="BzAlinhamento.Centro" Largura="110px">
+                <Template Context="p">
+                    <span class="badge @(p.Estoque == 0 ? "badge--vermelho" : p.Estoque < 10 ? "badge--amarelo" : "badge--verde")">
+                        @(p.Estoque == 0 ? "Esgotado" : p.Estoque + " un.")
+                    </span>
+                </Template>
+            </BzColuna>
+            <BzColunaAcoes Titulo="Ações" Context="p" Alinhamento="BzAlinhamento.Centro" Largura="110px">
+                <button class="btn btn--icone" title="Editar" @onclick='() => _msg = $"Editar: {p.Nome}"'>
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="btn btn--icone btn--perigo" title="Excluir" @onclick='() => _msg = $"Excluir: {p.Nome}"'>
+                    <i class="fas fa-trash"></i>
+                </button>
+            </BzColunaAcoes>
+        </ChildContent>
+    </BzGrid>
+
+    @if (_produtosSelecionados.Count > 0)
+    {
+        <div class="resumo">
+            <strong>@_produtosSelecionados.Count produto(s) selecionado(s):</strong>
+            @string.Join(", ", _produtosSelecionados.Select(p => p.Nome))
+        </div>
+    }
+</section>
+
+@* =====================================================================
+   GRID 2 — CARROS
+   Recursos: densidade compacta (Sm), sem listras, truncamento de texto,
+   template com cor de status, ordenação por valor diferente do exibido.
+   ===================================================================== *@
+<section class="bloco">
+    <h4>2. Carros — compacto e customizado</h4>
+
+    <BzGrid TItem="Carro"
+            Itens="_carros"
+            Tamanho="BzTamanho.Sm"
+            Listrado="false"
+            ItensPorPaginaPadrao="20"
+            PlaceholderBusca="Buscar carro...">
+        <ChildContent>
+            <BzColuna Titulo="Marca" Icone="fas fa-industry" Valor="c => c.Marca" Ordenavel Largura="15%" />
+            <BzColuna Titulo="Modelo" Valor="c => c.Modelo" Ordenavel Largura="20%" />
+            <BzColuna Titulo="Ano" Valor="c => c.Ano" Ordenavel Alinhamento="BzAlinhamento.Centro" Largura="90px" />
+            <BzColuna Titulo="Descrição" Valor="c => c.Descricao" MaxCaracteres="60" Largura="35%" />
+            <BzColuna Titulo="Status" Valor="c => c.Status" Ordenavel Alinhamento="BzAlinhamento.Centro" Largura="130px">
+                <Template Context="c">
+                    <span class="badge @(c.Status == "Disponível" ? "badge--verde" : c.Status == "Reservado" ? "badge--amarelo" : "badge--vermelho")">
+                        @c.Status
+                    </span>
+                </Template>
+            </BzColuna>
+            <BzColunaAcoes Titulo="" Context="c" Alinhamento="BzAlinhamento.Centro" Largura="60px">
+                <button class="btn btn--icone" title="Detalhes" @onclick='() => _msg = $"Detalhes: {c.Marca} {c.Modelo}"'>
+                    <i class="fas fa-eye"></i>
+                </button>
+            </BzColunaAcoes>
+        </ChildContent>
+    </BzGrid>
+</section>
+
+@* =====================================================================
+   GRID 3 — PESSOAS (1500 itens)
+   MostrarPaginacao="false", mas o limite de segurança força paginação.
+   Recursos: densidade Lg, seleção, opções de itens por página custom.
+   ===================================================================== *@
+<section class="bloco">
+    <h4>3. Pessoas — 1500 itens (paginação forçada pelo limite de segurança)</h4>
+
+    <BzGrid TItem="Pessoa"
+            Itens="_pessoas"
+            Tamanho="BzTamanho.Lg"
+            Selecionavel="true"
+            ChaveItem="p => p.Id"
+            @bind-Selecionados="_pessoasSelecionadas"
+            MostrarPaginacao="false"
+            ItensPorPaginaPadrao="25"
+            OpcoesItensPorPagina="_opcoesPessoas"
+            PlaceholderBusca="Buscar por nome, e-mail ou cidade...">
+        <ChildContent>
+            <BzColuna Titulo="ID" Valor="p => p.Id" Ordenavel Alinhamento="BzAlinhamento.Centro" Largura="70px" />
+            <BzColuna Titulo="Nome" Icone="fas fa-user" Valor="p => p.Nome" Ordenavel Largura="22%" />
+            <BzColuna Titulo="E-mail" Icone="fas fa-envelope" Valor="p => p.Email" Ordenavel Largura="26%" />
+            <BzColuna Titulo="Cidade" Icone="fas fa-city" Valor="p => p.Cidade" Ordenavel />
+            <BzColuna Titulo="Cargo" Valor="p => p.Cargo" Ordenavel />
+            <BzColuna Titulo="Idade" Valor="p => p.Idade" Ordenavel Alinhamento="BzAlinhamento.Centro" Largura="90px" />
+        </ChildContent>
+    </BzGrid>
+
+    @if (_pessoasSelecionadas.Count > 0)
+    {
+        <div class="resumo"><strong>@_pessoasSelecionadas.Count pessoa(s) selecionada(s)</strong> (persistem ao trocar de página)</div>
+    }
+</section>
+
+@code {
+    private string? _msg;
+    private bool _carregandoProdutos;
+
+    private List<Produto> _produtos = new();
+    private List<Carro> _carros = new();
+    private List<Pessoa> _pessoas = new();
+
+    private List<Produto> _produtosSelecionados = new();
+    private List<Pessoa> _pessoasSelecionadas = new();
+
+    private readonly int[] _opcoesPessoas = { 25, 50, 100, 200 };
+    private readonly CultureInfo _ptBr = new("pt-BR");
+
+    protected override void OnInitialized()
+    {
+        _produtos = GerarProdutos();
+        _carros = GerarCarros();
+        _pessoas = GerarPessoas(1500);
+    }
+
+    private string FormatarPreco(object? v) => v is decimal d ? d.ToString("C2", _ptBr) : string.Empty;
+
+    private void LimparSelecaoProdutos()
+    {
+        _produtosSelecionados = new();
+        _msg = "Seleção externa zerada. (Para limpar a marcação visual, desmarque o cabeçalho.)";
+    }
+
+    private async Task SimularCarregamento()
+    {
+        _carregandoProdutos = true;
+        StateHasChanged();
+        await Task.Delay(1200);
+        _carregandoProdutos = false;
+    }
+
+    // ---------------- Geradores de dados fake ----------------
+    private List<Produto> GerarProdutos()
+    {
+        string[] nomes = { "Mouse Gamer", "Teclado Mecânico", "Monitor 27\"", "Headset", "Webcam HD",
+            "SSD 1TB", "Memória 16GB", "Placa de Vídeo", "Fonte 650W", "Gabinete ATX",
+            "Cadeira Gamer", "Mousepad XL", "Hub USB-C", "Notebook 14\"", "Tablet 10\"" };
+        string[] cats = { "Periféricos", "Componentes", "Acessórios", "Computadores" };
+        var rnd = new Random(7);
+        var lista = new List<Produto>();
+        for (int i = 1; i <= 45; i++)
+        {
+            var nome = $"{nomes[i % nomes.Length]} {(char)('A' + i % 6)}{i}";
+            lista.Add(new Produto
+            {
+                Id = i,
+                Nome = nome,
+                Categoria = cats[i % cats.Length],
+                Preco = (decimal)Math.Round(rnd.NextDouble() * 4500 + 50, 2),
+                Estoque = i % 7 == 0 ? 0 : rnd.Next(1, 80),
+                // a cada 5 itens a URL fica vazia → demonstra o fallback "sem imagem"
+                ImagemUrl = i % 5 == 0 ? "" : $"https://picsum.photos/seed/prod{i}/64/64"
+            });
+        }
+        return lista;
+    }
+
+    private List<Carro> GerarCarros()
+    {
+        string[] marcas = { "Toyota", "Honda", "Volkswagen", "Chevrolet", "Ford", "Hyundai", "Fiat", "Renault" };
+        string[] modelos = { "Corolla", "Civic", "Golf", "Onix", "Ka", "HB20", "Argo", "Kwid" };
+        string[] status = { "Disponível", "Reservado", "Vendido" };
+        var rnd = new Random(13);
+        var lista = new List<Carro>();
+        for (int i = 1; i <= 60; i++)
+        {
+            lista.Add(new Carro
+            {
+                Id = i,
+                Marca = marcas[i % marcas.Length],
+                Modelo = modelos[i % modelos.Length],
+                Ano = 2010 + i % 15,
+                Descricao = "Veículo em ótimo estado de conservação, revisões em dia e único dono. Pneus novos e documentação regularizada.",
+                Status = status[i % status.Length]
+            });
+        }
+        return lista;
+    }
+
+    private List<Pessoa> GerarPessoas(int total)
+    {
+        string[] primeiros = { "Ana", "Bruno", "Carla", "Diego", "Elaine", "Felipe", "Gabriela", "Henrique", "Isabela", "João" };
+        string[] sobrenomes = { "Silva", "Souza", "Oliveira", "Santos", "Pereira", "Costa", "Almeida", "Lima" };
+        string[] cidades = { "São Paulo", "Rio de Janeiro", "Belo Horizonte", "Curitiba", "Porto Alegre", "Recife", "Salvador" };
+        string[] cargos = { "Desenvolvedor", "Analista", "Gerente", "Designer", "QA", "DevOps", "Suporte" };
+        var rnd = new Random(21);
+        var lista = new List<Pessoa>(total);
+        for (int i = 1; i <= total; i++)
+        {
+            var nome = $"{primeiros[i % primeiros.Length]} {sobrenomes[i % sobrenomes.Length]}";
+            lista.Add(new Pessoa
+            {
+                Id = i,
+                Nome = nome,
+                Email = $"{nome.ToLower().Replace(' ', '.')}{i}@exemplo.com",
+                Cidade = cidades[i % cidades.Length],
+                Cargo = cargos[i % cargos.Length],
+                Idade = 20 + i % 45
+            });
+        }
+        return lista;
+    }
+
+    // ---------------- Modelos fake ----------------
+    public class Produto
+    {
+        public int Id { get; set; }
+        public string Nome { get; set; } = "";
+        public string Categoria { get; set; } = "";
+        public decimal Preco { get; set; }
+        public int Estoque { get; set; }
+        public string ImagemUrl { get; set; } = "";
+    }
+
+    public class Carro
+    {
+        public int Id { get; set; }
+        public string Marca { get; set; } = "";
+        public string Modelo { get; set; } = "";
+        public int Ano { get; set; }
+        public string Descricao { get; set; } = "";
+        public string Status { get; set; } = "";
+    }
+
+    public class Pessoa
+    {
+        public int Id { get; set; }
+        public string Nome { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string Cidade { get; set; } = "";
+        public string Cargo { get; set; } = "";
+        public int Idade { get; set; }
+    }
+}
+
+<style>
+    .bloco { margin: 1.5rem 0 2.5rem; }
+    .bloco h4 { margin-bottom: .75rem; color: #374151; }
+
+    .aviso { background: #eef2ff; border: 1px solid #c7d2fe; color: #3730a3; padding: .6rem .9rem; border-radius: 8px; margin-bottom: 1rem; display: flex; align-items: center; gap: .5rem; }
+    .aviso__x { margin-left: auto; border: none; background: transparent; font-size: 1.2rem; cursor: pointer; color: inherit; line-height: 1; }
+
+    .resumo { margin-top: .6rem; padding: .6rem .9rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; font-size: .85rem; color: #374151; }
+
+    .btn { background: #fff; color: #1f2937; border: 1px solid #d1d5db; border-radius: 6px; padding: .35rem .7rem; font-size: .85rem; cursor: pointer; display: inline-flex; align-items: center; gap: .35rem; }
+    .btn:hover { border-color: #2563eb; }
+    .btn--primario { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .btn--icone { padding: .3rem .5rem; }
+    .btn--perigo:hover { border-color: #dc2626; color: #dc2626; }
+
+    .badge { display: inline-block; padding: .15rem .5rem; border-radius: 999px; font-size: .72rem; font-weight: 600; }
+    .badge--verde { background: #dcfce7; color: #166534; }
+    .badge--amarelo { background: #fef9c3; color: #854d0e; }
+    .badge--vermelho { background: #fee2e2; color: #991b1b; }
+</style>

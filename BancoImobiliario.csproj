@@ -16,13 +16,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="DllTeste">
-      <HintPath>..\DllTeste\bin\Debug\net9.0\DllTeste.dll</HintPath>
-    </Reference>
+    <Folder Include="wwwroot\imagens\" />
+    <Folder Include="wwwroot\sons\" />
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="wwwroot\imagens\" />
+    <ProjectReference Include="..\DllTeste\DllTeste.csproj" />
   </ItemGroup>
 
 </Project>

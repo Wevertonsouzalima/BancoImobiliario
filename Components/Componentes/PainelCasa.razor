@@ -40,35 +40,45 @@
         }
         else
         {
+            var ehCompanhia = Dados.TipoCasaId == 2; // Companhia não constrói (sem casa/hotel)
+            var ehPropriedade = Dados.TipoCasaId == 1 || Dados.TipoCasaId == 2; // Cidade ou Companhia
+
             <div class="pcasa-titulo">
                 <span class="pcasa-nome">@Dados.Nome</span>
                 <span class="pcasa-pos">Posição @Dados.Posicao</span>
             </div>
 
-            <div class="pcasa-linha">
-                <span><i class="bi bi-person-badge"></i> Proprietário</span>
-                <strong>@Dados.NomeProprietario</strong>
-            </div>
-            <div class="pcasa-linha">
-                <span><i class="bi bi-cash"></i> Compra</span>
-                <strong>@Moeda(Dados.ValorCompra)</strong>
-            </div>
-            <div class="pcasa-linha">
-                <span><i class="bi bi-house-door"></i> Aluguel</span>
-                <strong>@Moeda(Dados.ValorAluguel)</strong>
-            </div>
-            <div class="pcasa-linha">
-                <span><i class="bi bi-bricks"></i> Add. casa</span>
-                <strong>@Moeda(Dados.CustoCasa)</strong>
-            </div>
-            <div class="pcasa-linha">
-                <span><i class="bi bi-building"></i> Add. hotel</span>
-                <strong>@Moeda(Dados.CustoHotel)</strong>
-            </div>
-            <div class="pcasa-linha">
-                <span><i class="bi bi-houses"></i> Construções</span>
-                <strong>@Dados.QtdCasas c · @Dados.QtdHoteis h</strong>
-            </div>
+            @if (ehPropriedade)
+            {
+                <div class="pcasa-linha">
+                    <span><i class="bi bi-person-badge"></i> Proprietário</span>
+                    <strong>@Dados.NomeProprietario</strong>
+                </div>
+                <div class="pcasa-linha">
+                    <span><i class="bi bi-cash"></i> Compra</span>
+                    <strong>@Moeda(Dados.ValorCompra)</strong>
+                </div>
+                <div class="pcasa-linha">
+                    <span><i class="bi bi-house-door"></i> Aluguel</span>
+                    <strong>@Moeda(Dados.ValorAluguel)</strong>
+                </div>
+
+                @if (!ehCompanhia)
+                {
+                    <div class="pcasa-linha">
+                        <span><i class="bi bi-bricks"></i> Add. casa</span>
+                        <strong>@Moeda(Dados.CustoCasa)</strong>
+                    </div>
+                    <div class="pcasa-linha">
+                        <span><i class="bi bi-building"></i> Add. hotel</span>
+                        <strong>@Moeda(Dados.CustoHotel)</strong>
+                    </div>
+                    <div class="pcasa-linha">
+                        <span><i class="bi bi-houses"></i> Construções</span>
+                        <strong>@Dados.QtdCasas c · @Dados.QtdHoteis h</strong>
+                    </div>
+                }
+            }
 
             @if (Dados.GrupoId is not null)
             {
@@ -135,6 +145,8 @@
         if (Dados is null || !Dados.EhPropriedade)
             return;
 
+        var ehCompanhia = Dados.TipoCasaId == 2; // companhia não constrói
+
         if (Dados.PodeOferecerCompra)
         {
             builder.OpenElement(0, "div");
@@ -150,7 +162,7 @@
 
             builder.CloseElement();
         }
-        else if (Dados.EhDonoJogadorDaVez && (PodeAddCasa || PodeAddHotel))
+        else if (!ehCompanhia && Dados.EhDonoJogadorDaVez && (PodeAddCasa || PodeAddHotel))
         {
             builder.OpenElement(10, "div");
             builder.AddAttribute(11, "class", "pcasa-acoes dupla");

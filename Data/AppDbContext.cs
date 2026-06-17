@@ -12,7 +12,6 @@ public class AppDbContext : DbContext
     {
     }
 
-    public DbSet<Configuracao> Configuracoes { get; set; } = null!;
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -38,8 +37,10 @@ public class AppDbContext : DbContext
             entity.HasIndex(x => x.CodigoSala).IsUnique();
         });
     }
+    public DbSet<Configuracao> Configuracoes { get; set; } = null!;
 
     public DbSet<Tb_Partida> Tb_Partidas => Set<Tb_Partida>();
+    public DbSet<PartidaCatalogoUsado> PartidaCatalogoUsado { get; set; }
     public DbSet<Tb_PartidaJogador> Tb_PartidaJogadores => Set<Tb_PartidaJogador>();
     public DbSet<Tb_BotPerfil> Tb_BotPerfis => Set<Tb_BotPerfil>();
     public DbSet<Tb_PartidaEvento> Tb_PartidaEventos => Set<Tb_PartidaEvento>();
@@ -52,6 +53,7 @@ public class AppDbContext : DbContext
     public DbSet<Tabuleiros> Tabuleiros { get; set; }
     public DbSet<LayoutTabuleiro> LayoutTabuleiro { get; set; }
     public DbSet<Cidade> Cidades { get; set; }
+    public DbSet<PartidaJogadorEfeito> PartidaJogadorEfeito { get; set; }
     public DbSet<PartidaTabuleiro> PartidaTabuleiro { get; set; }
     public DbSet<TabuleiroFronteira> TabuleiroFronteira { get; set; }
     public DbSet<PartidaFronteira> PartidaFronteiras { get; set; }

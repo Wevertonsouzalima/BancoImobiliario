@@ -1,0 +1,463 @@
+@using BancoImobiliario.Models.DTOs.Jogo
+@using System.Globalization
+
+
+
+<div class="msel-overlay" style="@(_aberto ? "" : "display:none;")">
+    <div class="msel-modal">
+
+        <div class="msel-header">
+            <div>
+                <h3>@Titulo</h3>
+                @if (!string.IsNullOrWhiteSpace(Subtitulo))
+                {
+                    <p>@Subtitulo</p>
+                }
+            </div>
+            @if (PermiteCancelar)
+            {
+                <button type="button" class="msel-x" @onclick="Cancelar" title="Cancelar">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            }
+        </div>
+
+        @* combo de filtro (Banco / Jogadores / Todos) *@
+        @if (MostrarComboFiltro)
+        {
+            <div class="msel-filtro">
+                <i class="bi bi-funnel"></i>
+                <select @bind="_filtroAtual">
+                    @if (FiltroPermitido == "todos")
+                    {
+                        <option value="todos">Todos</option>
+                        <option value="banco">Apenas do banco</option>
+                        <option value="jogadores">Apenas de jogadores</option>
+                    }
+                    else if (FiltroPermitido == "banco")
+                    {
+                        <option value="banco">Apenas do banco</option>
+                    }
+                    else if (FiltroPermitido == "jogadores")
+                    {
+                        <option value="jogadores">Apenas de jogadores</option>
+                    }
+                </select>
+            </div>
+        }
+
+        <div class="msel-lista">
+            @{
+                var itensFiltrados = FiltrarItens();
+            }
+            @if (itensFiltrados.Count == 0)
+            {
+                <div class="msel-vazio">
+                    <i class="bi bi-inbox"></i>
+                    <span>Nenhuma propriedade disponível para esta seleção.</span>
+                </div>
+            }
+            else
+            {
+                @foreach (var item in itensFiltrados)
+                {
+                    <button type="button"
+                            class="@($"msel-card {(_selecionado?.PartidaTabuleiroId == item.PartidaTabuleiroId ? "sel" : "")}")"
+                            @onclick="() => _selecionado = item">
+
+                        <span class="msel-card-cor"
+                              style="background-color:@(string.IsNullOrWhiteSpace(item.CorHexadecimal) ? "#64748b" : item.CorHexadecimal);"></span>
+
+                        @if (!string.IsNullOrWhiteSpace(item.Imagem))
+                        {
+                            <span class="msel-card-img" style="background-image:url('/imagens/@item.Imagem');"></span>
+                        }
+                        else
+                        {
+                            <span class="msel-card-img msel-card-img-vazia"><i class="bi bi-geo-alt"></i></span>
+                        }
+
+                        <span class="msel-card-info">
+                            <span class="msel-card-nome">@item.Nome</span>
+                            <span class="msel-card-dono">
+                                <i class="bi @(item.EhDoBanco ? "bi-bank" : "bi-person-fill")"></i>
+                                @item.NomeProprietario
+                            </span>
+                        </span>
+
+                        <span class="msel-card-valores">
+                            <span class="msel-card-aluguel">@Moeda(item.ValorAluguel)</span>
+                            <span class="msel-card-compra">compra @Moeda(item.ValorCompra)</span>
+                        </span>
+
+                        @if (_selecionado?.PartidaTabuleiroId == item.PartidaTabuleiroId)
+                        {
+                            <span class="msel-card-check"><i class="bi bi-check-circle-fill"></i></span>
+                        }
+                    </button>
+                }
+            }
+        </div>
+
+        <div class="msel-acoes">
+            @if (PermiteCancelar)
+            {
+                <button type="button" class="msel-btn cancelar" @onclick="Cancelar">
+                    Cancelar
+                </button>
+            }
+            <button type="button" class="msel-btn confirmar"
+                    disabled="@(_selecionado is null)"
+                    @onclick="ConfirmarAsync">
+                <i class="bi bi-check-lg"></i> @TextoBotao
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<style>
+    .msel-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(2, 6, 23, .82);
+        backdrop-filter: blur(3px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1300;
+        padding: 1rem;
+    }
+
+    .msel-modal {
+        width: min(96vw, 480px);
+        max-height: 72vh;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid rgba(96, 165, 250, .25);
+        border-radius: 20px;
+        background: linear-gradient(160deg, rgba(15,23,42,.99), rgba(2,6,23,.99));
+        box-shadow: 0 30px 70px rgba(0,0,0,.6);
+        overflow: hidden;
+    }
+
+    .msel-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1.1rem 1.3rem .8rem;
+        border-bottom: 1px solid rgba(148, 163, 184, .14);
+    }
+
+        .msel-header h3 {
+            margin: 0;
+            color: #e5e7eb;
+            font-size: 1.15rem;
+        }
+
+        .msel-header p {
+            margin: .25rem 0 0;
+            color: #94a3b8;
+            font-size: .82rem;
+        }
+
+    .msel-x {
+        width: 32px;
+        height: 32px;
+        border: 0;
+        border-radius: 9px;
+        background: rgba(148, 163, 184, .18);
+        color: #e5e7eb;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+        .msel-x:hover {
+            background: rgba(148, 163, 184, .3);
+        }
+
+    .msel-filtro {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        padding: .7rem 1.3rem;
+        border-bottom: 1px solid rgba(148, 163, 184, .1);
+    }
+
+        .msel-filtro i {
+            color: #94a3b8;
+        }
+
+        .msel-filtro select {
+            flex: 1;
+            padding: .45rem .7rem;
+            border-radius: 9px;
+            border: 1px solid rgba(148, 163, 184, .3);
+            background: #0b1120;
+            color: #e5e7eb;
+            font-weight: 700;
+            font-size: .85rem;
+        }
+
+    .msel-lista {
+        flex: 1;
+        overflow-y: auto;
+        max-height: 46vh;
+        padding: .8rem 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: .5rem;
+    }
+
+    .msel-vazio {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: .5rem;
+        padding: 2rem 1rem;
+        color: #64748b;
+        font-size: .85rem;
+        text-align: center;
+    }
+
+        .msel-vazio i {
+            font-size: 1.8rem;
+        }
+
+    .msel-card {
+        display: flex;
+        align-items: center;
+        gap: .7rem;
+        width: 100%;
+        min-height: 64px;
+        text-align: left;
+        padding: .55rem .7rem .55rem .9rem;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, .16);
+        background: rgba(15, 23, 42, .55);
+        cursor: pointer;
+        transition: 130ms ease;
+        position: relative;
+        overflow: hidden;
+        font-family: inherit;
+        line-height: normal;
+        appearance: none;
+    }
+
+        .msel-card:hover {
+            border-color: rgba(96, 165, 250, .4);
+            background: rgba(30, 41, 59, .65);
+        }
+
+        .msel-card.sel {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, .15);
+        }
+
+    .msel-card-cor {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 5px;
+    }
+
+    .msel-card-img {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        background-size: cover;
+        background-position: center;
+        flex-shrink: 0;
+        border: 1px solid rgba(148,163,184,.2);
+    }
+
+    .msel-card-img-vazia {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(145deg, #1e293b, #0f172a);
+        color: #475569;
+    }
+
+    .msel-card-info {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: .2rem;
+        min-width: 0;
+    }
+
+    .msel-card-nome {
+        font-weight: 800;
+        color: #f1f5f9;
+        font-size: .9rem;
+        line-height: 1.1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .msel-card-dono {
+        font-size: .74rem;
+        color: #94a3b8;
+        line-height: 1.1;
+        display: inline-flex;
+        align-items: center;
+        gap: .3rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .msel-card-valores {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        justify-content: center;
+        gap: .15rem;
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
+
+    .msel-card-aluguel {
+        font-weight: 900;
+        color: #86efac;
+        font-size: .92rem;
+        line-height: 1.1;
+    }
+
+    .msel-card-compra {
+        font-size: .68rem;
+        color: #64748b;
+        line-height: 1.1;
+    }
+
+    .msel-card-check {
+        color: #3b82f6;
+        font-size: 1.2rem;
+        margin-left: .15rem;
+        flex-shrink: 0;
+    }
+
+    .msel-acoes {
+        display: flex;
+        gap: .6rem;
+        padding: .9rem 1.3rem;
+        border-top: 1px solid rgba(148, 163, 184, .14);
+    }
+
+    .msel-btn {
+        flex: 1;
+        min-height: 46px;
+        border: 0;
+        border-radius: 13px;
+        font-weight: 900;
+        font-size: .92rem;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: .4rem;
+    }
+
+        .msel-btn.cancelar {
+            background: rgba(148, 163, 184, .18);
+            color: #e5e7eb;
+        }
+
+            .msel-btn.cancelar:hover {
+                background: rgba(148, 163, 184, .28);
+            }
+
+        .msel-btn.confirmar {
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            color: white;
+        }
+
+            .msel-btn.confirmar:hover:not(:disabled) {
+                filter: brightness(1.08);
+            }
+
+            .msel-btn.confirmar:disabled {
+                opacity: .5;
+                cursor: not-allowed;
+            }
+</style>
+
+@code {
+    [Parameter] public string Titulo { get; set; } = "Selecione uma propriedade";
+    [Parameter] public string? Subtitulo { get; set; }
+    [Parameter] public string TextoBotao { get; set; } = "Confirmar";
+    [Parameter] public List<PropriedadeSelecionavelDTO> Itens { get; set; } = new();
+    [Parameter] public string FiltroPermitido { get; set; } = "todos"; // "todos" | "banco" | "jogadores"
+    [Parameter] public bool PermiteCancelar { get; set; } = true;
+    [Parameter] public EventCallback<PropriedadeSelecionavelDTO> AoSelecionar { get; set; }
+
+    private bool _aberto;
+    private string _filtroAtual = "todos";
+    private PropriedadeSelecionavelDTO? _selecionado;
+
+    private bool MostrarComboFiltro => FiltroPermitido == "todos";
+
+    public async Task AbrirAsync()
+    {
+        _aberto = true;
+        _selecionado = null;
+        // o filtro inicial respeita o permitido
+        _filtroAtual = FiltroPermitido == "todos" ? "todos" : FiltroPermitido;
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    public void Fechar()
+    {
+        _aberto = false;
+        StateHasChanged();
+    }
+
+    private List<PropriedadeSelecionavelDTO> FiltrarItens()
+    {
+        IEnumerable<PropriedadeSelecionavelDTO> q = Itens;
+
+        // restrição fixa do uso
+        if (FiltroPermitido == "banco")
+            q = q.Where(i => i.EhDoBanco);
+        else if (FiltroPermitido == "jogadores")
+            q = q.Where(i => !i.EhDoBanco);
+        else
+        {
+            // "todos": aplica o filtro escolhido na combo
+            if (_filtroAtual == "banco")
+                q = q.Where(i => i.EhDoBanco);
+            else if (_filtroAtual == "jogadores")
+                q = q.Where(i => !i.EhDoBanco);
+        }
+
+        return q.OrderByDescending(i => i.ValorAluguel).ToList();
+    }
+
+    private void Cancelar()
+    {
+        _aberto = false;
+        _selecionado = null;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmarAsync()
+    {
+        if (_selecionado is null) return;
+
+        var escolhido = _selecionado;
+        _aberto = false;
+        StateHasChanged();
+
+        if (AoSelecionar.HasDelegate)
+            await AoSelecionar.InvokeAsync(escolhido);
+    }
+
+    private static string Moeda(decimal valor)
+        => valor.ToString("C", CultureInfo.GetCultureInfo("pt-BR"));
+}

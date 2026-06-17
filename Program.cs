@@ -11,13 +11,15 @@ using DllTeste.Banco.Centralizador;
 using DllTeste.Banco.ConexaoCentralizada.Services;
 using DllTeste.Banco.SistemaPaginas.Models;
 using DllTeste.Banco.SistemaPaginas.Services;
+using DllTeste.Componentes.Confirmacao;
+using DllTeste.Componentes.Toasts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics.Internal;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var nomeSistema = builder.Configuration["Sistema:Nome"];
-var ambiente = builder.Configuration["Sistema:Ambiente"];
+var nomeSistema = builder.Configuration["Sistemas:Principal:Nome"];
+var ambiente = builder.Configuration["Sistemas:Principal:Ambiente"];
 
 if (string.IsNullOrWhiteSpace(nomeSistema))
     throw new Exception("Sistema:Nome não configurado no appsettings.json.");
@@ -46,6 +48,15 @@ builder.Services.AddDbContextFactory<AppDbContext>(options =>
     }
 });
 
+
+
+// Exemplo se for um serviço Transiente (criado toda vez que for pedido)
+builder.Services.AddTransient<IConfirmacaoService, ConfirmacaoService>();
+// Adicione isso no seu Program.cs junto com os outros builder.Services
+builder.Services.AddScoped<DllTeste.Componentes.Toasts.IToastService, DllTeste.Componentes.Toasts.ToastService>();
+// Ou se for Scoped (mantido durante a sessão do usuário/circuito Blazor)
+builder.Services.AddScoped<IConfirmacaoService, ConfirmacaoService>();
+
 // Serviços do Blazor
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -63,6 +74,7 @@ builder.Services.AddLoginPadrao(opcoes =>
 
 // + LOGIN — validação no banco (hoje); troque por AD no futuro
 builder.Services.AddScoped<ILoginAuthenticator, EfLoginAuthenticator<AppDbContext>>();
+builder.Services.AddScoped<ToastService>();
 
 //Serviços
 builder.Services.AddScoped<ConfiguracaoService>();

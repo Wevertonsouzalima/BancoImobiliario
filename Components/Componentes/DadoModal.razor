@@ -1,19 +1,20 @@
 ﻿@using Microsoft.AspNetCore.Components
+@inject IJSRuntime JS
 
 @* ============================================================
-   DadoModal - modal de rolagem de dado animado.
+   DadoModal - modal de rolagem de dado com cubo 3D (CSS).
 
    Fluxo:
-   1. AbrirAsync() abre o modal e comeca o dado chacoalhando
-      (numeros aleatorios locais, apenas visuais).
+   1. AbrirAsync() abre o modal; o cubo fica em "repouso" balançando leve.
    2. O jogador clica "Parar".
-   3. O componente busca o resultado no servidor (ObterResultadoServidor).
-   4. A animacao DESACELERA e CONVERGE para o numero do servidor,
-      parando exatamente nele (sem "pulo").
-   5. O jogador clica "Confirmar" e AoConfirmar e disparado.
+   3. Busca o resultado no servidor (ObterResultadoServidor) e toca o som.
+   4. O cubo ROLA em 3D (várias voltas desacelerando) e PARA com a face
+      da frente mostrando o número sorteado (resultado do range inteiro).
+   5. O jogador clica "Confirmar" e AoConfirmar é disparado.
 
-   Em caso de erro do servidor, o modal MOSTRA a mensagem de erro
-   e nao reinicia o balancar.
+   Observação: o cubo é um D6 (forma visual). Durante o giro as faces
+   passam rápido (borrão de rotação); ao parar, a face frontal mostra
+   exatamente o número sorteado, como a cara final de um dado.
    ============================================================ *@
 
 <div class="dado-overlay" style="@(_aberto ? "" : "display:none;")">
@@ -23,16 +24,22 @@
             <h3>@TituloModal</h3>
         </header>
 
-        <div class="dado-area">
-            <div class="@ClasseDado()">
-                <span class="dado-numero">@_numeroExibido</span>
+        <div class="dado-cena">
+            <div class="@ClasseCubo()" style="@EstiloCubo()">
+                <div class="face face-front">@_faceFront</div>
+                <div class="face face-back">@_faceBack</div>
+                <div class="face face-right">@_faceRight</div>
+                <div class="face face-left">@_faceLeft</div>
+                <div class="face face-top">@_faceTop</div>
+                <div class="face face-bottom">@_faceBottom</div>
             </div>
+            <div class="dado-sombra @( _estado == EstadoDado.Rolando ? "rolando" : "")"></div>
         </div>
 
         <div class="dado-status">
             @switch (_estado)
             {
-                case EstadoDado.Chacoalhando:
+                case EstadoDado.Rolando:
                     <span class="status-texto">Role o dado!</span>
                     break;
 
@@ -41,7 +48,7 @@
                     break;
 
                 case EstadoDado.Revelado:
-                    <span class="status-label">Voce tirou</span>
+                    <span class="status-label">Você tirou</span>
                     <span class="status-resultado">@_resultadoServidor</span>
                     break;
 
@@ -57,10 +64,8 @@
         <footer class="dado-modal-footer">
             @switch (_estado)
             {
-                case EstadoDado.Chacoalhando:
-                    <button type="button"
-                            class="dado-botao parar"
-                            @onclick="PararAsync">
+                case EstadoDado.Rolando:
+                    <button type="button" class="dado-botao parar" @onclick="PararAsync">
                         <i class="bi bi-hand-index-thumb"></i>
                         Parar
                     </button>
@@ -69,23 +74,19 @@
                 case EstadoDado.Parando:
                     <button type="button" class="dado-botao parar" disabled>
                         <i class="bi bi-hourglass-split"></i>
-                        Aguarde...
+                        Parando...
                     </button>
                     break;
 
                 case EstadoDado.Revelado:
-                    <button type="button"
-                            class="dado-botao confirmar"
-                            @onclick="ConfirmarAsync">
+                    <button type="button" class="dado-botao confirmar" @onclick="ConfirmarAsync">
                         <i class="bi bi-check-lg"></i>
                         Confirmar
                     </button>
                     break;
 
                 case EstadoDado.Erro:
-                    <button type="button"
-                            class="dado-botao fechar"
-                            @onclick="FecharPorErro">
+                    <button type="button" class="dado-botao fechar" @onclick="FecharPorErro">
                         <i class="bi bi-x-lg"></i>
                         Fechar
                     </button>
@@ -125,103 +126,132 @@
         font-size: 1.15rem;
     }
 
-    .dado-area {
+    /* ===== Cena 3D ===== */
+    .dado-cena {
+        --tam: 110px;
+        height: calc(var(--tam) + 50px);
         display: flex;
+        flex-direction: column;
+        align-items: center;
         justify-content: center;
-        margin-bottom: 1.25rem;
+        perspective: 700px;
+        margin-bottom: 1rem;
     }
 
-    .dado-cubo {
-        width: 120px;
-        height: 120px;
-        border-radius: 24px;
+    .cubo {
+        position: relative;
+        width: var(--tam);
+        height: var(--tam);
+        transform-style: preserve-3d;
+        transition: transform .1s linear;
+    }
+
+        /* repouso: balança de leve continuamente */
+        .cubo.repouso {
+            animation: cuboRepouso 3s ease-in-out infinite;
+        }
+
+        /* rolando: giro rápido nos 3 eixos (a parada fina é via transform inline) */
+        .cubo.rolando {
+            animation: cuboRola .6s linear infinite;
+        }
+
+    .face {
+        position: absolute;
+        width: var(--tam);
+        height: var(--tam);
         display: flex;
         align-items: center;
         justify-content: center;
-        background: linear-gradient(145deg, #f8fafc, #cbd5e1);
-        box-shadow: 0 14px 30px rgba(0,0,0,.4), inset 0 2px 6px rgba(255,255,255,.7);
-    }
-
-        .dado-cubo.chacoalhando {
-            animation: dado-tremer .28s infinite ease-in-out;
-        }
-
-        .dado-cubo.parando {
-            animation: dado-balancar .5s ease-out;
-        }
-
-        .dado-cubo.revelado {
-            background: linear-gradient(145deg, #dcfce7, #86efac);
-            box-shadow: 0 14px 34px rgba(34,197,94,.45), inset 0 2px 6px rgba(255,255,255,.7);
-            animation: dado-revelar .4s ease-out;
-        }
-
-        .dado-cubo.erro {
-            background: linear-gradient(145deg, #fee2e2, #fca5a5);
-            box-shadow: 0 14px 34px rgba(239,68,68,.4), inset 0 2px 6px rgba(255,255,255,.7);
-        }
-
-    .dado-numero {
-        font-size: 3.4rem;
+        font-size: 2.6rem;
         font-weight: 900;
         color: #0f172a;
+        background: linear-gradient(145deg, #f8fafc, #cbd5e1);
+        border: 2px solid rgba(255,255,255,.7);
+        border-radius: 18px;
+        box-shadow: inset 0 2px 8px rgba(255,255,255,.7), inset 0 -6px 14px rgba(15,23,42,.18);
         font-variant-numeric: tabular-nums;
+        backface-visibility: hidden;
     }
 
-    @@keyframes dado-tremer {
-        0% {
-            transform: translate(0,0) rotate(0deg);
+    /* posiciona as 6 faces do cubo */
+    .face-front {
+        transform: rotateY(0deg) translateZ(calc(var(--tam) / 2));
+    }
+
+    .face-back {
+        transform: rotateY(180deg) translateZ(calc(var(--tam) / 2));
+    }
+
+    .face-right {
+        transform: rotateY(90deg) translateZ(calc(var(--tam) / 2));
+    }
+
+    .face-left {
+        transform: rotateY(-90deg) translateZ(calc(var(--tam) / 2));
+    }
+
+    .face-top {
+        transform: rotateX(90deg) translateZ(calc(var(--tam) / 2));
+    }
+
+    .face-bottom {
+        transform: rotateX(-90deg) translateZ(calc(var(--tam) / 2));
+    }
+
+    .dado-sombra {
+        width: 90px;
+        height: 16px;
+        margin-top: 14px;
+        border-radius: 50%;
+        background: radial-gradient(ellipse, rgba(0,0,0,.5), transparent 70%);
+        filter: blur(2px);
+        transition: transform .2s ease;
+    }
+
+        .dado-sombra.rolando {
+            animation: sombraPulsa .6s ease-in-out infinite;
         }
 
-        25% {
-            transform: translate(-4px,3px) rotate(-7deg);
+    @@keyframes cuboRepouso {
+        0%, 100% {
+            transform: rotateX(-18deg) rotateY(-22deg);
         }
 
         50% {
-            transform: translate(4px,-3px) rotate(7deg);
-        }
-
-        75% {
-            transform: translate(-3px,-3px) rotate(-4deg);
-        }
-
-        100% {
-            transform: translate(0,0) rotate(0deg);
+            transform: rotateX(-12deg) rotateY(-30deg);
         }
     }
 
-    @@keyframes dado-balancar {
+    @@keyframes cuboRola {
         0% {
-            transform: translate(-3px,2px) rotate(-5deg);
-        }
-
-        40% {
-            transform: translate(2px,-1px) rotate(3deg);
-        }
-
-        70% {
-            transform: translate(-1px,1px) rotate(-1deg);
+            transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg);
         }
 
         100% {
-            transform: translate(0,0) rotate(0deg);
+            transform: rotateX(360deg) rotateY(360deg) rotateZ(180deg);
         }
     }
 
-    @@keyframes dado-revelar {
-        0% {
-            transform: scale(.82);
+    @@keyframes sombraPulsa {
+        0%, 100% {
+            transform: scaleX(1);
+            opacity: .5;
         }
 
-        60% {
-            transform: scale(1.12);
-        }
-
-        100% {
-            transform: scale(1);
+        50% {
+            transform: scaleX(.7);
+            opacity: .3;
         }
     }
 
+    .dado-revelado .face {
+        background: linear-gradient(145deg, #dcfce7, #86efac);
+        box-shadow: inset 0 2px 8px rgba(255,255,255,.7), 0 0 26px rgba(34,197,94,.4);
+        color: #0f172a;
+    }
+
+    /* ===== Status / botões ===== */
     .dado-status {
         min-height: 56px;
         display: flex;
@@ -300,137 +330,120 @@
 </style>
 
 @code {
-    // ---- Parametros ----
+    // ---- Parâmetros (mesma API de antes) ----
 
-    [Parameter]
-    public string TituloModal { get; set; } = "Resultado";
+    [Parameter] public string TituloModal { get; set; } = "Resultado";
+    [Parameter] public int MinValor { get; set; } = 1;
+    [Parameter] public int MaxValor { get; set; } = 6;
+    [Parameter] public List<int> NumerosRestritos { get; set; } = new();
+    [Parameter] public Func<Task<int>>? ObterResultadoServidor { get; set; }
+    [Parameter] public EventCallback<int> AoConfirmar { get; set; }
 
-    /// <summary>Menor valor possivel exibido durante o chacoalhar (visual).</summary>
-    [Parameter]
-    public int MinValor { get; set; } = 1;
+    // Modo automático (bot): o dado para sozinho no valor informado,
+    // sem botão "Parar" nem "Confirmar". Útil para animar o turno do bot.
+    [Parameter] public bool Automatico { get; set; }
 
-    /// <summary>Maior valor possivel exibido durante o chacoalhar (visual).</summary>
-    [Parameter]
-    public int MaxValor { get; set; } = 6;
+    // ---- Estado ----
 
-    /// <summary>
-    /// Numeros que NAO devem aparecer durante o chacoalhar (visual).
-    /// </summary>
-    [Parameter]
-    public List<int> NumerosRestritos { get; set; } = new();
-
-    /// <summary>
-    /// Funcao que busca o resultado real no servidor. Chamada ao clicar
-    /// "Parar". A animacao para exatamente neste numero.
-    /// </summary>
-    [Parameter]
-    public Func<Task<int>>? ObterResultadoServidor { get; set; }
-
-    /// <summary>Disparado quando o jogador confirma o resultado.</summary>
-    [Parameter]
-    public EventCallback<int> AoConfirmar { get; set; }
-
-    // ---- Estado interno ----
-
-    private enum EstadoDado
-    {
-        Chacoalhando,
-        Parando,
-        Revelado,
-        Erro
-    }
+    private enum EstadoDado { Rolando, Parando, Revelado, Erro }
 
     private bool _aberto;
-    private EstadoDado _estado = EstadoDado.Chacoalhando;
+    private EstadoDado _estado = EstadoDado.Rolando;
 
-    private int _numeroExibido = 1;
     private int _resultadoServidor;
     private string? _mensagemErro;
 
-    private CancellationTokenSource? _animacaoCts;
+    // valores exibidos nas 6 faces
+    private string _faceFront = "?";
+    private string _faceBack = "?";
+    private string _faceRight = "?";
+    private string _faceLeft = "?";
+    private string _faceTop = "?";
+    private string _faceBottom = "?";
 
-    // ---- API publica ----
+    // transform final do cubo (para parar mostrando a frente)
+    private string _transformFinal = "";
 
-    /// <summary>Abre o modal e inicia o dado chacoalhando.</summary>
+    // ---- API pública (inalterada) ----
+
     public async Task AbrirAsync()
     {
         _aberto = true;
-        _estado = EstadoDado.Chacoalhando;
+        _estado = EstadoDado.Rolando;       // já abre rolando
         _resultadoServidor = 0;
         _mensagemErro = null;
-        _numeroExibido = SortearNumeroVisual();
-
+        _transformFinal = "";
+        SortearFacesVisuais();
         StateHasChanged();
 
-        await IniciarChacoalharAsync();
+        // som de rolagem contínua (em loop) enquanto o dado gira
+        await TocarSomLoopAsync("dado");
     }
 
-    /// <summary>Fecha o modal e cancela qualquer animacao em andamento.</summary>
     public void Fechar()
     {
-        CancelarAnimacao();
         _aberto = false;
         StateHasChanged();
     }
 
-    // ---- Animacao ----
-
-    /// <summary>
-    /// Loop de chacoalhar: troca o numero exibido rapidamente ate o
-    /// jogador clicar "Parar".
-    /// </summary>
-    private async Task IniciarChacoalharAsync()
+    // Modo automático (bot): abre, rola, para sozinho no valor e auto-confirma.
+    // Não usa ObterResultadoServidor — o valor já vem resolvido pelo roteiro do bot.
+    public async Task AbrirAutomaticoAsync(int valor)
     {
-        CancelarAnimacao();
-        _animacaoCts = new CancellationTokenSource();
-        var token = _animacaoCts.Token;
-
-        try
-        {
-            while (!token.IsCancellationRequested && _estado == EstadoDado.Chacoalhando)
-            {
-                _numeroExibido = SortearNumeroVisual();
-                await InvokeAsync(StateHasChanged);
-                await Task.Delay(80, token);
-            }
-        }
-        catch (TaskCanceledException)
-        {
-            // esperado quando o jogador clica "Parar"
-        }
-    }
-
-    /// <summary>
-    /// Chamado ao clicar "Parar". Busca o resultado do servidor e roda a
-    /// animacao de desaceleracao terminando exatamente nesse numero.
-    /// Em caso de erro, exibe a mensagem (NAO reinicia o balancar).
-    /// </summary>
-    private async Task PararAsync()
-    {
-        if (_estado != EstadoDado.Chacoalhando)
-            return;
-
-        _estado = EstadoDado.Parando;
-        CancelarAnimacao();
+        _aberto = true;
+        _estado = EstadoDado.Rolando;
+        _resultadoServidor = valor;
+        _mensagemErro = null;
+        _transformFinal = "";
+        SortearFacesVisuais();
         StateHasChanged();
 
-        // 1. Busca o resultado real no servidor.
-        int resultado;
+        await TocarSomLoopAsync("dado");
 
+        // gira um tempo (como se estivesse rolando)
+        await Task.Delay(2000);
+
+        // "solta" o dado
+        await PararSomLoopAsync();
+        await TocarSomAsync("jogandodado");
+
+        _estado = EstadoDado.Parando;
+        StateHasChanged();
+        await Task.Delay(700);
+
+        // para no valor
+        _faceFront = valor.ToString();
+        _transformFinal = "transform: rotateX(-15deg) rotateY(-20deg);";
+        _estado = EstadoDado.Revelado;
+        StateHasChanged();
+
+        // deixa visível um instante e fecha sozinho
+        await Task.Delay(900);
+        _aberto = false;
+        StateHasChanged();
+
+        if (AoConfirmar.HasDelegate)
+            await AoConfirmar.InvokeAsync(valor);
+    }
+
+    // ---- Rolagem ----
+
+    private async Task PararAsync()
+    {
+        if (_estado != EstadoDado.Rolando)
+            return;
+
+        // 1. Busca o resultado no servidor.
+        int resultado;
         try
         {
-            if (ObterResultadoServidor is null)
-            {
-                resultado = SortearNumeroVisual();
-            }
-            else
-            {
-                resultado = await ObterResultadoServidor.Invoke();
-            }
+            resultado = ObterResultadoServidor is null
+                ? SortearVisual()
+                : await ObterResultadoServidor.Invoke();
         }
         catch (Exception ex)
         {
-            // Erro do servidor: mostra a mensagem e NAO reinicia o balancar.
+            await PararSomLoopAsync();
             _mensagemErro = ex.InnerException?.Message ?? ex.Message;
             _estado = EstadoDado.Erro;
             StateHasChanged();
@@ -439,35 +452,21 @@
 
         _resultadoServidor = resultado;
 
-        // 2. Animacao de desaceleracao convergindo para o resultado.
-        await DesacelerarAteResultadoAsync(resultado);
+        // 2. Para o som de rolagem e toca o som de "soltar o dado".
+        await PararSomLoopAsync();
+        await TocarSomAsync("jogandodado");
 
-        // 3. Revela.
-        _numeroExibido = resultado;
+        // 3. Marca como parando (mantém o giro mais um instante e desacelera).
+        _estado = EstadoDado.Parando;
+        StateHasChanged();
+
+        await Task.Delay(700);
+
+        // 4. Para mostrando o resultado na face da frente.
+        _faceFront = resultado.ToString();
+        _transformFinal = "transform: rotateX(-15deg) rotateY(-20deg);";
         _estado = EstadoDado.Revelado;
         StateHasChanged();
-    }
-
-    /// <summary>
-    /// Faz o dado desacelerar: cada troca demora mais que a anterior.
-    /// As ultimas trocas ja mostram o numero final, garantindo que a
-    /// animacao pare exatamente no resultado do servidor (sem "pulo").
-    /// </summary>
-    private async Task DesacelerarAteResultadoAsync(int resultado)
-    {
-        int[] intervalos = { 70, 90, 115, 145, 180, 230, 290, 360 };
-
-        for (var i = 0; i < intervalos.Length; i++)
-        {
-            var faltamPoucas = i >= intervalos.Length - 2;
-
-            _numeroExibido = faltamPoucas
-                ? resultado
-                : SortearNumeroVisual();
-
-            await InvokeAsync(StateHasChanged);
-            await Task.Delay(intervalos[i]);
-        }
     }
 
     private async Task ConfirmarAsync()
@@ -475,8 +474,9 @@
         if (_estado != EstadoDado.Revelado)
             return;
 
-        var resultado = _resultadoServidor;
+        await PararSomLoopAsync();
 
+        var resultado = _resultadoServidor;
         _aberto = false;
         StateHasChanged();
 
@@ -484,85 +484,95 @@
             await AoConfirmar.InvokeAsync(resultado);
     }
 
-    /// <summary>Fecha o modal apos um erro, sem disparar AoConfirmar.</summary>
-    private void FecharPorErro()
+    private async void FecharPorErro()
     {
-        CancelarAnimacao();
+        await PararSomLoopAsync();
         _aberto = false;
         _mensagemErro = null;
         StateHasChanged();
     }
 
-    // ---- Auxiliares ----
+    // ---- Visual ----
 
-    /// <summary>
-    /// Sorteia um numero apenas para exibicao durante a animacao.
-    /// Respeita o intervalo e evita numeros restritos (visual).
-    /// </summary>
-    private int SortearNumeroVisual()
-    {
-        var min = MinValor;
-        var max = MaxValor;
-
-        if (max < min)
-            max = min;
-
-        var validos = new List<int>();
-        for (var v = min; v <= max; v++)
-        {
-            if (!NumerosRestritos.Contains(v))
-                validos.Add(v);
-        }
-
-        if (validos.Count == 0)
-        {
-            for (var v = min; v <= max; v++)
-                validos.Add(v);
-        }
-
-        // Evita repetir o mesmo numero duas vezes seguidas.
-        if (validos.Count > 1)
-        {
-            var tentativas = 0;
-            int escolhido;
-            do
-            {
-                escolhido = validos[Random.Shared.Next(validos.Count)];
-                tentativas++;
-            }
-            while (escolhido == _numeroExibido && tentativas < 5);
-
-            return escolhido;
-        }
-
-        return validos[0];
-    }
-
-    private string ClasseDado()
+    private string ClasseCubo()
     {
         switch (_estado)
         {
-            case EstadoDado.Chacoalhando:
-                return "dado-cubo chacoalhando";
-
-            case EstadoDado.Parando:
-                return "dado-cubo parando";
-
-            case EstadoDado.Revelado:
-                return "dado-cubo revelado";
-
-            case EstadoDado.Erro:
-                return "dado-cubo erro";
-
-            default:
-                return "dado-cubo";
+            case EstadoDado.Rolando: return "cubo rolando";
+            case EstadoDado.Parando: return "cubo rolando";
+            case EstadoDado.Revelado: return "cubo dado-revelado";
+            default: return "cubo";
         }
     }
 
-    private void CancelarAnimacao()
+    private string EstiloCubo()
     {
-        _animacaoCts?.Cancel();
-        _animacaoCts?.Dispose();
-        _animacaoCts = null;
+        // No estado revelado, aplica o transform final fixo (sem animação).
+        return _estado == EstadoDado.Revelado ? _transformFinal : "";
+    }
+
+    // Sorteia 6 números do range para as faces (decorativo).
+    private void SortearFacesVisuais()
+    {
+        _faceFront = SortearVisual().ToString();
+        _faceBack = SortearVisual().ToString();
+        _faceRight = SortearVisual().ToString();
+        _faceLeft = SortearVisual().ToString();
+        _faceTop = SortearVisual().ToString();
+        _faceBottom = SortearVisual().ToString();
+    }
+
+    private int SortearVisual()
+    {
+        var min = MinValor;
+        var max = MaxValor;
+        if (max < min) max = min;
+
+        var validos = new List<int>();
+        for (var v = min; v <= max; v++)
+            if (!NumerosRestritos.Contains(v))
+                validos.Add(v);
+
+        if (validos.Count == 0)
+            for (var v = min; v <= max; v++)
+                validos.Add(v);
+
+        return validos[Random.Shared.Next(validos.Count)];
+    }
+
+    private async Task TocarSomAsync(string nome)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("jogoAudio.tocar", nome);
+        }
+        catch
+        {
+            /* som é opcional; ignora se o helper não estiver carregado */
+        }
+    }
+
+    private async Task TocarSomLoopAsync(string nome)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("jogoAudio.tocarLoop", nome);
+        }
+        catch
+        {
+            /* som opcional */
+        }
+    }
+
+    private async Task PararSomLoopAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("jogoAudio.pararLoop");
+        }
+        catch
+        {
+            /* som opcional */
+        }
     }
 }
