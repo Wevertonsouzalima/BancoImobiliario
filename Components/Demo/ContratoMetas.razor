@@ -1,0 +1,933 @@
+@page "/contrato-metas"
+@rendermode InteractiveServer
+@using System.Globalization
+
+@*
+    Contrato de Metas (PADE IPC) - página self-contained.
+    Blazor Server / .NET 9. Dados mock no @code.
+    Tema claro Bradesco. Bootstrap Icons via CDN (troque por self-hosted se preferir).
+*@
+
+<HeadContent>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+</HeadContent>
+
+<div class="cm-page">
+    <div class="cm-container">
+
+        @* ============================ CABEÇALHO ============================ *@
+        <header class="cm-topo">
+            <div class="cm-topo-esq">
+                <span class="cm-pade">PADE IPC</span>
+                <h1 class="cm-titulo">Contrato de Metas</h1>
+                <span class="cm-subtitulo">70% da nota PADE · 4 trimestres</span>
+            </div>
+
+            <div class="cm-topo-centro">
+                <div class="cm-perfil-toggle">
+                    @foreach (var p in (Perfil[])Enum.GetValues(typeof(Perfil)))
+                    {
+                        var atual = p;
+                        <button type="button"
+                                class="cm-perfil-btn @(_perfil == atual ? "ativo" : "")"
+                                @onclick="() => SelecionarPerfil(atual)">
+                            <i class="bi @IconePerfil(atual)"></i>
+                            <span>@NomePerfil(atual)</span>
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="cm-topo-dir">
+                <div class="cm-periodo">
+                    <i class="bi bi-calendar-event"></i>
+                    <select class="cm-periodo-sel" value="@_trimApuracao"
+                            @onchange="OnTrocarPeriodo">
+                        @for (int t = 0; t < 4; t++)
+                        {
+                            var triLocal = t;
+                            <option value="@triLocal">@(triLocal + 1)º TRIMESTRE · 2026</option>
+                        }
+                    </select>
+                </div>
+                <button type="button" class="cm-icone-btn" title="Notificações">
+                    <i class="bi bi-bell"></i>
+                    <span class="cm-bell-dot"></span>
+                </button>
+                <button type="button" class="cm-icone-btn" title="Documento">
+                    <i class="bi bi-file-earmark-text"></i>
+                </button>
+                <div class="cm-gestor">
+                    <span class="cm-gestor-avatar">GA</span>
+                    <div class="cm-gestor-info">
+                        <strong>GESTOR(A)</strong>
+                        <span>Gestora · Campanhas &amp; Incentivos</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        @* ====================== CARD DO FUNCIONÁRIO ====================== *@
+        <section class="cm-func">
+            <div class="cm-func-avatar">F1</div>
+
+            <div class="cm-func-dados">
+                <h2 class="cm-func-nome">@_func.Nome</h2>
+                <div class="cm-func-grid">
+                    <span><b>Cargo:</b> @_func.Cargo</span>
+                    <span><b>Admissão:</b> @_func.Admissao</span>
+                    <span><span class="cm-rotulo">Área Gerencial:</span> @_func.AreaGerencial</span>
+                    <span><b>Grupo de Competição:</b> <span class="cm-destaque">@_func.GrupoCompeticao</span></span>
+                </div>
+                <button type="button" class="cm-btn-licenca">
+                    <i class="bi bi-info-circle"></i> Informar licença
+                </button>
+            </div>
+
+            <div class="cm-func-donut">
+                @{
+                    const double RAIO = 52d;
+                    double circ = 2 * Math.PI * RAIO;
+                    double frac = Math.Min((double)NotaFinal / 130d, 1d);
+                    double traco = circ * frac;
+                    string dashArray = $"{traco.ToString(_inv)} {(circ - traco).ToString(_inv)}";
+                }
+                <svg viewBox="0 0 120 120" class="cm-donut-svg">
+                    <circle cx="60" cy="60" r="52" class="cm-donut-bg"></circle>
+                    <circle cx="60" cy="60" r="52" class="cm-donut-fg"
+                            stroke-dasharray="@dashArray" transform="rotate(-90 60 60)"></circle>
+                    <text x="60" y="58" class="cm-donut-num">@Fmt2(NotaFinal)</text>
+                    <text x="60" y="76" class="cm-donut-lbl">NOTA FINAL</text>
+                </svg>
+            </div>
+
+            <div class="cm-func-acoes">
+                <button type="button" class="cm-btn cm-btn-primario" disabled="@SomenteLeitura">
+                    <i class="bi bi-check-lg"></i> Salvar e enviar
+                </button>
+                <button type="button" class="cm-btn cm-btn-outline" disabled="@SomenteLeitura">
+                    <i class="bi bi-pencil"></i> Salvar rascunho
+                </button>
+                <button type="button" class="cm-btn cm-btn-texto">
+                    <i class="bi bi-x-lg"></i> Fechar sem salvar
+                </button>
+            </div>
+        </section>
+
+        @* ====================== CARDS DE TRIMESTRE ====================== *@
+        <section class="cm-tri-cards">
+            @for (int t = 0; t < 4; t++)
+            {
+                var triLocal = t;
+                var emApuracao = triLocal == _trimApuracao;
+                <div class="cm-tri-card @(emApuracao ? "ativo" : "")">
+                    <div class="cm-tri-card-topo">
+                        <span class="cm-tri-card-lbl">@(triLocal + 1)º TRIMESTRE</span>
+                        @if (emApuracao)
+                        {
+                            <span class="cm-tri-badge">EM APURAÇÃO</span>
+                        }
+                    </div>
+                    <span class="cm-tri-card-valor">@Fmt2(NotaTrimestre(triLocal))%</span>
+                </div>
+            }
+            <div class="cm-tri-card final">
+                <div class="cm-tri-card-topo">
+                    <span class="cm-tri-card-lbl">NOTA FINAL</span>
+                </div>
+                <span class="cm-tri-card-valor">@Fmt2(NotaFinal)%</span>
+            </div>
+        </section>
+
+        @* ====================== BARRA DE PESOS DOS BLOCOS ====================== *@
+        @{
+            decimal somaBlocos = SomaPesosBlocos();
+            bool blocosOk = somaBlocos == 100m;
+            var status = ObterStatusPesos(blocosOk);
+            double larguraBarra = Math.Min((double)somaBlocos, 100d);
+        }
+        <section class="cm-pesos">
+            <div class="cm-pesos-info">
+                <span class="cm-pesos-titulo">Soma dos pesos dos blocos (deve totalizar 100%)</span>
+                <div class="cm-pesos-track">
+                    <div class="cm-pesos-fill @(blocosOk ? "ok" : "warn")"
+                         style="width:@larguraBarra.ToString(_inv)%"></div>
+                </div>
+                <span class="cm-pesos-valor @(blocosOk ? "ok" : "warn")">
+                    @FmtNum(somaBlocos)<small>/100%</small>
+                </span>
+            </div>
+            <div class="cm-pesos-status @status.Classe">
+                <i class="bi @status.Icone"></i>
+                <span>@status.Texto</span>
+            </div>
+        </section>
+
+        @* ============================ BLOCOS ============================ *@
+        @foreach (var bloco in _blocos)
+        {
+            var b = bloco;
+            bool pesosTriOk = TodosPesosTrimestreOk(b);
+            <div class="cm-bloco">
+                <div class="cm-bloco-cabecalho">
+                    <button type="button" class="cm-chevron" @onclick="() => b.Expandido = !b.Expandido">
+                        <i class="bi @(b.Expandido ? "bi-chevron-down" : "bi-chevron-right")"></i>
+                    </button>
+                    <div class="cm-bloco-barra"></div>
+                    <div class="cm-bloco-tit">
+                        <strong>@b.Nome</strong>
+                        <span class="cm-bloco-sub">
+                            @b.Indicadores.Count indicadores ·
+                            @(pesosTriOk ? "pesos por trimestre OK" : "ajustar pesos por trimestre")
+                        </span>
+                    </div>
+
+                    <div class="cm-bloco-peso">
+                        <label>PESO DO BLOCO</label>
+                        <input type="number" min="0" max="100" class="cm-inp cm-inp-peso"
+                               @bind="b.PesoBloco" @bind:event="oninput" disabled="@SomenteLeitura" />
+                        <span>%</span>
+                    </div>
+
+                    <div class="cm-bloco-nota">
+                        <span class="cm-bloco-nota-lbl">@(_trimApuracao + 1)ºTRI</span>
+                        <strong>@Fmt2(NotaBlocoTrimestre(b, _trimApuracao))%</strong>
+                    </div>
+
+                    @if (!SomenteLeitura)
+                    {
+                        <button type="button" class="cm-lixeira" title="Remover bloco"
+                                @onclick="() => RemoverBloco(b)">
+                            <i class="bi bi-trash3"></i>
+                        </button>
+                    }
+                </div>
+
+                @if (b.Expandido)
+                {
+                    <div class="cm-tabela-wrap">
+                        <table class="cm-tabela">
+                            <thead>
+                                <tr class="cm-th-tri">
+                                    <th class="cm-col-ind" rowspan="2">INDICADOR</th>
+                                    @for (int t = 0; t < 4; t++)
+                                    {
+                                        <th colspan="2" class="cm-th-grupo">@(t + 1)º TRIMESTRE</th>
+                                    }
+                                    <th rowspan="2" class="cm-col-acao"></th>
+                                </tr>
+                                <tr class="cm-th-sub">
+                                    @for (int t = 0; t < 4; t++)
+                                    {
+                                        <th>PESO</th>
+                                        <th>NOTA</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{ int linha = 0; }
+                                @foreach (var indicador in b.Indicadores)
+                                {
+                                    var ind = indicador;
+                                    linha++;
+                                    <tr>
+                                        <td class="cm-col-ind">
+                                            <span class="cm-num-linha">@linha</span>
+                                            <input type="text" class="cm-inp cm-inp-texto"
+                                                   @bind="ind.Descricao" @bind:event="oninput"
+                                                   disabled="@SomenteLeitura"
+                                                   placeholder="Descrição do indicador" />
+                                        </td>
+                                        @for (int t = 0; t < 4; t++)
+                                        {
+                                            var triLocal = t;
+                                            <td class="cm-cel-num">
+                                                <div class="cm-inp-sufixo">
+                                                    <input type="number" min="0" max="100" class="cm-inp"
+                                                           @bind="ind.Trimestres[triLocal].Peso" @bind:event="oninput"
+                                                           disabled="@SomenteLeitura" />
+                                                    <span>%</span>
+                                                </div>
+                                            </td>
+                                            <td class="cm-cel-num">
+                                                <div class="cm-inp-sufixo">
+                                                    <input type="number" min="0" class="cm-inp"
+                                                           @bind="ind.Trimestres[triLocal].Nota" @bind:event="oninput"
+                                                           disabled="@SomenteLeitura" />
+                                                    <span>%</span>
+                                                </div>
+                                            </td>
+                                        }
+                                        <td class="cm-col-acao">
+                                            @if (!SomenteLeitura)
+                                            {
+                                                <button type="button" class="cm-remover-ind" title="Remover indicador"
+                                                        @onclick="() => RemoverIndicador(b, ind)">
+                                                    <i class="bi bi-x-lg"></i>
+                                                </button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+
+                                <tr class="cm-linha-soma">
+                                    <td class="cm-col-ind">SOMA DOS PESOS</td>
+                                    @for (int t = 0; t < 4; t++)
+                                    {
+                                        var triLocal = t;
+                                        var somaTri = SomaPesosIndicadores(b, triLocal);
+                                        bool triOk = somaTri == 100m;
+                                        <td colspan="2" class="cm-cel-soma">
+                                            <span class="cm-pill-soma @(triOk ? "ok" : "warn")">
+                                                @FmtNum(somaTri)%
+                                                @if (triOk)
+                                                {
+                                                    <i class="bi bi-check-lg"></i>
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-exclamation-triangle"></i>
+                                                }
+                                            </span>
+                                        </td>
+                                    }
+                                    <td class="cm-col-acao"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    @if (!SomenteLeitura)
+                    {
+                        <button type="button" class="cm-add-link" @onclick="() => AdicionarIndicador(b)">
+                            <i class="bi bi-plus-lg"></i> Adicionar indicador
+                        </button>
+                    }
+                }
+            </div>
+        }
+
+        @if (!SomenteLeitura)
+        {
+            <button type="button" class="cm-add-bloco" @onclick="AbrirModalBloco">
+                <i class="bi bi-plus-lg"></i> Adicionar novo bloco
+            </button>
+        }
+
+    </div>
+</div>
+
+@* ============================ MODAL ADICIONAR BLOCO ============================ *@
+@if (_modalBlocoAberto)
+{
+    decimal somaAtual = SomaPesosBlocos();
+    decimal restante = Math.Max(0m, 100m - somaAtual);
+    var disponiveis = BlocosDisponiveis();
+    bool podeSalvar = !string.IsNullOrWhiteSpace(_novoBlocoNome)
+                      && _novoBlocoPeso.HasValue
+                      && _novoBlocoPeso.Value > 0m
+                      && _novoBlocoPeso.Value <= 100m;
+
+    <div class="cm-modal-overlay" @onclick="FecharModalBloco">
+        <div class="cm-modal" @onclick:stopPropagation="true">
+            <div class="cm-modal-cab">
+                <h3>ADICIONAR BLOCO</h3>
+                <button type="button" class="cm-modal-x" @onclick="FecharModalBloco">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+
+            <div class="cm-modal-corpo">
+                <div class="cm-modal-campos">
+                    <div class="cm-campo">
+                        <label>BLOCO <span class="cm-obrig">*</span></label>
+                        <select class="cm-inp cm-select" @bind="_novoBlocoNome">
+                            <option value="">Selecione</option>
+                            @foreach (var nome in disponiveis)
+                            {
+                                <option value="@nome">@nome</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="cm-campo cm-campo-peso">
+                        <label>PESO (%) <span class="cm-obrig">*</span></label>
+                        <input type="number" min="0" max="100" class="cm-inp" placeholder="ex: 35"
+                               @bind="_novoBlocoPeso" @bind:event="oninput" />
+                        <small>0–100</small>
+                    </div>
+                </div>
+
+                <div class="cm-modal-aviso">
+                    A soma dos pesos de todos os blocos deve totalizar <b>100%</b>.
+                    Atualmente: <b>@FmtNum(somaAtual)%</b>. Restam <b>@FmtNum(restante)%</b> para distribuir.
+                </div>
+            </div>
+
+            <div class="cm-modal-rodape">
+                <button type="button" class="cm-btn cm-btn-outline" @onclick="FecharModalBloco">Cancelar</button>
+                <button type="button" class="cm-btn cm-btn-primario"
+                        disabled="@(!podeSalvar)" @onclick="SalvarNovoBloco">Salvar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ================================ ESTILOS ================================ *@
+<style>
+    .cm-page {
+        --cm-red: #cc092f;
+        --cm-wine: #8b1a3f;
+        --cm-wine-grad: linear-gradient(135deg, #9e2349, #6b1029);
+        --cm-red-grad: linear-gradient(135deg, #d23a5c, #b21341);
+        --cm-ink: #1f2733;
+        --cm-muted: #6b7280;
+        --cm-line: #ececef;
+        --cm-soft: #faf7f8;
+        --cm-green: #2e9e5b;
+        --cm-green-bg: #e7f5ec;
+        --cm-chip: #fdeef1;
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        color: var(--cm-ink);
+        background: #f3f1f2;
+        min-height: 100vh;
+        padding: 18px;
+        box-sizing: border-box;
+    }
+
+    .cm-page *, .cm-page *::before, .cm-page *::after { box-sizing: border-box; }
+
+    .cm-container {
+        max-width: 1240px;
+        margin: 0 auto;
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 4px 24px rgba(0,0,0,.06);
+        padding: 22px 26px 30px;
+    }
+
+    /* ---------- Cabeçalho ---------- */
+    .cm-topo {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+    .cm-pade { font-size: 11px; letter-spacing: 1.5px; color: var(--cm-wine); font-weight: 700; }
+    .cm-titulo { font-size: 30px; font-weight: 700; margin: 2px 0; }
+    .cm-subtitulo { font-size: 13px; color: var(--cm-muted); }
+
+    .cm-perfil-toggle {
+        display: inline-flex; background: #f4f1f2; border-radius: 999px; padding: 4px;
+        margin-top: 6px;
+    }
+    .cm-perfil-btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        border: 0; background: transparent; cursor: pointer;
+        padding: 7px 16px; border-radius: 999px; font-size: 13px; color: var(--cm-muted);
+        font-weight: 600; transition: all .15s;
+    }
+    .cm-perfil-btn.ativo { background: var(--cm-wine-grad); color: #fff; box-shadow: 0 2px 6px rgba(139,26,63,.3); }
+
+    .cm-topo-dir { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .cm-periodo {
+        display: inline-flex; align-items: center; gap: 6px;
+        border: 1px solid var(--cm-line); border-radius: 8px; padding: 6px 10px; font-size: 13px; color: var(--cm-ink);
+    }
+    .cm-periodo-sel { border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer; outline: none; }
+    .cm-icone-btn {
+        position: relative; border: 1px solid var(--cm-line); background: #fff; border-radius: 8px;
+        width: 36px; height: 36px; cursor: pointer; color: var(--cm-ink); font-size: 16px;
+    }
+    .cm-bell-dot { position: absolute; top: 7px; right: 9px; width: 7px; height: 7px; background: var(--cm-red); border-radius: 50%; }
+    .cm-gestor { display: flex; align-items: center; gap: 8px; }
+    .cm-gestor-avatar {
+        width: 36px; height: 36px; border-radius: 50%; background: #d9d9de; color: #5a5a63;
+        display: grid; place-items: center; font-size: 13px; font-weight: 700;
+    }
+    .cm-gestor-info { display: flex; flex-direction: column; line-height: 1.15; }
+    .cm-gestor-info strong { font-size: 12px; }
+    .cm-gestor-info span { font-size: 11px; color: var(--cm-muted); }
+
+    /* ---------- Card funcionário ---------- */
+    .cm-func {
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        gap: 22px; align-items: center;
+        padding: 22px 4px; margin-top: 14px;
+        border-bottom: 1px solid var(--cm-line);
+    }
+    .cm-func-avatar {
+        width: 76px; height: 76px; border-radius: 50%; background: #f3c5cf; color: var(--cm-wine);
+        display: grid; place-items: center; font-size: 26px; font-weight: 700;
+    }
+    .cm-func-nome { font-size: 22px; font-weight: 700; margin: 0 0 6px; }
+    .cm-func-grid { display: flex; flex-wrap: wrap; gap: 6px 28px; font-size: 13px; color: #374151; }
+    .cm-func-grid b { font-weight: 600; }
+    .cm-rotulo { color: var(--cm-muted); }
+    .cm-destaque { color: var(--cm-wine); font-weight: 700; }
+    .cm-btn-licenca {
+        margin-top: 10px; border: 1px solid var(--cm-line); background: #fff; border-radius: 8px;
+        padding: 6px 12px; font-size: 12px; color: var(--cm-ink); cursor: pointer; display: inline-flex; gap: 6px; align-items: center;
+    }
+
+    .cm-donut-svg { width: 108px; height: 108px; }
+    .cm-donut-bg { fill: none; stroke: #efe3e7; stroke-width: 11; }
+    .cm-donut-fg { fill: none; stroke: var(--cm-wine); stroke-width: 11; stroke-linecap: round; transition: stroke-dasharray .4s; }
+    .cm-donut-num { fill: var(--cm-wine); font-size: 22px; font-weight: 700; text-anchor: middle; }
+    .cm-donut-lbl { fill: var(--cm-muted); font-size: 8px; letter-spacing: 1px; text-anchor: middle; }
+
+    .cm-func-acoes { display: flex; flex-direction: column; gap: 8px; min-width: 180px; }
+    .cm-btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+        border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+        border: 1px solid transparent; transition: all .15s;
+    }
+    .cm-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .cm-btn-primario { background: var(--cm-red-grad); color: #fff; }
+    .cm-btn-primario:not(:disabled):hover { filter: brightness(1.05); }
+    .cm-btn-outline { background: #fff; border-color: var(--cm-line); color: var(--cm-ink); }
+    .cm-btn-texto { background: transparent; color: var(--cm-muted); }
+
+    /* ---------- Cards trimestre ---------- */
+    .cm-tri-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 20px 0; }
+    .cm-tri-card { border: 1px solid var(--cm-line); border-radius: 10px; padding: 12px 14px; background: #fff; }
+    .cm-tri-card.ativo, .cm-tri-card.final { background: var(--cm-wine-grad); border-color: transparent; color: #fff; }
+    .cm-tri-card-topo { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .cm-tri-card-lbl { font-size: 11px; letter-spacing: .5px; color: var(--cm-muted); font-weight: 600; }
+    .cm-tri-card.ativo .cm-tri-card-lbl, .cm-tri-card.final .cm-tri-card-lbl { color: rgba(255,255,255,.85); }
+    .cm-tri-badge { font-size: 8px; font-weight: 700; letter-spacing: .5px; background: rgba(255,255,255,.22); padding: 2px 6px; border-radius: 4px; }
+    .cm-tri-card-valor { font-size: 22px; font-weight: 700; }
+
+    /* ---------- Barra de pesos ---------- */
+    .cm-pesos {
+        display: flex; align-items: center; gap: 18px; justify-content: space-between;
+        background: var(--cm-soft); border-radius: 12px; padding: 16px 20px; margin-bottom: 18px;
+    }
+    .cm-pesos-info { display: flex; align-items: center; gap: 16px; flex: 1; }
+    .cm-pesos-titulo { font-size: 13px; font-weight: 600; white-space: nowrap; }
+    .cm-pesos-track { flex: 1; height: 7px; background: #ecdfe3; border-radius: 99px; overflow: hidden; min-width: 120px; }
+    .cm-pesos-fill { height: 100%; border-radius: 99px; transition: width .3s; }
+    .cm-pesos-fill.ok { background: var(--cm-green); }
+    .cm-pesos-fill.warn { background: var(--cm-wine); }
+    .cm-pesos-valor { font-size: 14px; font-weight: 700; white-space: nowrap; }
+    .cm-pesos-valor small { font-weight: 400; color: var(--cm-muted); }
+    .cm-pesos-valor.ok { color: var(--cm-green); }
+    .cm-pesos-valor.warn { color: var(--cm-wine); }
+    .cm-pesos-status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 8px; white-space: nowrap; }
+    .cm-pesos-status.status-ok { background: var(--cm-green-bg); color: var(--cm-green); }
+    .cm-pesos-status.status-warn { background: var(--cm-chip); color: var(--cm-wine); }
+
+    /* ---------- Bloco ---------- */
+    .cm-bloco { border: 1px solid var(--cm-line); border-radius: 12px; margin-bottom: 14px; overflow: hidden; }
+    .cm-bloco-cabecalho { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+    .cm-chevron { border: 0; background: transparent; cursor: pointer; color: var(--cm-muted); font-size: 14px; padding: 4px; }
+    .cm-bloco-barra { width: 4px; height: 34px; background: var(--cm-wine); border-radius: 4px; }
+    .cm-bloco-tit { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+    .cm-bloco-tit strong { font-size: 15px; }
+    .cm-bloco-sub { font-size: 12px; color: var(--cm-muted); }
+    .cm-bloco-peso { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--cm-muted); }
+    .cm-bloco-peso label { font-weight: 600; letter-spacing: .3px; }
+    .cm-bloco-nota { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
+    .cm-bloco-nota-lbl { font-size: 10px; color: var(--cm-muted); letter-spacing: .5px; }
+    .cm-bloco-nota strong { font-size: 17px; color: var(--cm-wine); }
+    .cm-lixeira { border: 0; background: transparent; cursor: pointer; color: var(--cm-muted); font-size: 15px; padding: 6px; }
+    .cm-lixeira:hover { color: var(--cm-red); }
+
+    /* ---------- Tabela ---------- */
+    .cm-tabela-wrap { padding: 0 16px 4px; overflow-x: auto; }
+    .cm-tabela { width: 100%; border-collapse: collapse; }
+    .cm-tabela th { font-size: 10px; letter-spacing: .4px; color: var(--cm-muted); font-weight: 600; padding: 8px 6px; text-align: center; }
+    .cm-th-grupo { border-left: 1px solid var(--cm-line); }
+    .cm-col-ind { text-align: left !important; min-width: 240px; }
+    .cm-col-acao { width: 36px; }
+    .cm-tabela tbody td { padding: 8px 6px; border-top: 1px solid var(--cm-line); vertical-align: middle; }
+    .cm-cel-num { text-align: center; }
+    .cm-num-linha { display: inline-block; width: 18px; color: var(--cm-muted); font-size: 12px; }
+
+    .cm-inp {
+        border: 1px solid var(--cm-line); border-radius: 7px; padding: 7px 9px; font: inherit; font-size: 13px;
+        color: var(--cm-ink); background: #fff; outline: none; width: 100%; transition: border-color .15s;
+    }
+    .cm-inp:focus { border-color: var(--cm-wine); }
+    .cm-inp:disabled { background: #f7f7f8; color: #6b7280; }
+    .cm-inp-texto { max-width: 100%; }
+    .cm-inp-peso { width: 56px; text-align: center; }
+    .cm-inp-sufixo { display: inline-flex; align-items: center; gap: 4px; }
+    .cm-inp-sufixo .cm-inp { width: 64px; text-align: center; }
+    .cm-inp-sufixo span { font-size: 11px; color: var(--cm-muted); }
+
+    .cm-remover-ind, .cm-modal-x { border: 0; background: transparent; cursor: pointer; color: var(--cm-muted); font-size: 13px; padding: 4px; }
+    .cm-remover-ind:hover { color: var(--cm-red); }
+
+    .cm-linha-soma td { border-top: 2px solid var(--cm-line); }
+    .cm-linha-soma .cm-col-ind { font-size: 11px; font-weight: 700; letter-spacing: .4px; color: var(--cm-muted); }
+    .cm-cel-soma { text-align: center; }
+    .cm-pill-soma { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 6px; }
+    .cm-pill-soma.ok { background: var(--cm-green-bg); color: var(--cm-green); }
+    .cm-pill-soma.warn { background: var(--cm-chip); color: var(--cm-wine); }
+
+    .cm-add-link { border: 0; background: transparent; color: var(--cm-wine); font-size: 13px; font-weight: 600; cursor: pointer; padding: 12px 16px; display: inline-flex; gap: 6px; align-items: center; }
+    .cm-add-bloco {
+        width: 100%; border: 1.5px dashed #e3c9d1; background: #fff; color: var(--cm-wine);
+        border-radius: 12px; padding: 16px; font-size: 14px; font-weight: 600; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .cm-add-bloco:hover { background: var(--cm-soft); }
+
+    /* ---------- Modal ---------- */
+    .cm-modal-overlay { position: fixed; inset: 0; background: rgba(20,10,15,.45); display: grid; place-items: center; z-index: 50; padding: 16px; }
+    .cm-modal { width: 100%; max-width: 640px; background: #fff; border-radius: 14px; box-shadow: 0 18px 50px rgba(0,0,0,.25); overflow: hidden; }
+    .cm-modal-cab { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px 0; }
+    .cm-modal-cab h3 { font-size: 16px; font-weight: 700; color: var(--cm-wine); letter-spacing: .5px; margin: 0; }
+    .cm-modal-corpo { padding: 18px 24px 4px; }
+    .cm-modal-campos { display: grid; grid-template-columns: 1fr 200px; gap: 16px; }
+    .cm-campo { display: flex; flex-direction: column; gap: 6px; }
+    .cm-campo label { font-size: 12px; font-weight: 600; color: var(--cm-muted); letter-spacing: .3px; }
+    .cm-campo small { font-size: 11px; color: var(--cm-muted); }
+    .cm-obrig { color: var(--cm-red); }
+    .cm-select { cursor: pointer; }
+    .cm-modal-aviso { margin-top: 16px; background: var(--cm-chip); border-radius: 8px; padding: 14px 16px; font-size: 13px; color: #5a3540; line-height: 1.5; }
+    .cm-modal-rodape { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px 22px; }
+
+    @@media (max-width: 980px) {
+        .cm-func { grid-template-columns: 1fr; text-align: left; }
+        .cm-func-acoes { min-width: 0; }
+        .cm-tri-cards { grid-template-columns: repeat(2, 1fr); }
+        .cm-pesos { flex-direction: column; align-items: stretch; }
+        .cm-modal-campos { grid-template-columns: 1fr; }
+    }
+</style>
+
+@code {
+    // ===================== Cultura / formatação =====================
+    private static readonly CultureInfo _ptBr = new CultureInfo("pt-BR");
+    private static readonly CultureInfo _inv = CultureInfo.InvariantCulture;
+
+    private string Fmt2(decimal v) => v.ToString("N2", _ptBr);
+
+    private string FmtNum(decimal v)
+    {
+        // Inteiro -> sem casas; com fração -> 2 casas.
+        if (v == Math.Truncate(v))
+        {
+            return v.ToString("N0", _ptBr);
+        }
+        return v.ToString("N2", _ptBr);
+    }
+
+    // ===================== Enums / modelos =====================
+    private enum Perfil
+    {
+        Gestor,
+        Funcionario,
+        Admin
+    }
+
+    private string NomePerfil(Perfil p)
+    {
+        string nome;
+        switch (p)
+        {
+            case Perfil.Gestor:
+                nome = "Gestor";
+                break;
+            case Perfil.Funcionario:
+                nome = "Funcionário";
+                break;
+            case Perfil.Admin:
+                nome = "Admin";
+                break;
+            default:
+                nome = p.ToString();
+                break;
+        }
+        return nome;
+    }
+
+    private string IconePerfil(Perfil p)
+    {
+        string icone;
+        switch (p)
+        {
+            case Perfil.Gestor:
+                icone = "bi-people";
+                break;
+            case Perfil.Funcionario:
+                icone = "bi-person";
+                break;
+            case Perfil.Admin:
+                icone = "bi-gear";
+                break;
+            default:
+                icone = "bi-person";
+                break;
+        }
+        return icone;
+    }
+
+    private class Funcionario
+    {
+        public string Nome { get; set; } = "";
+        public string Cargo { get; set; } = "";
+        public string Admissao { get; set; } = "";
+        public string AreaGerencial { get; set; } = "";
+        public string GrupoCompeticao { get; set; } = "";
+    }
+
+    private class TrimestreValor
+    {
+        public decimal Peso { get; set; }
+        public decimal Nota { get; set; }
+    }
+
+    private class Indicador
+    {
+        public string Descricao { get; set; } = "";
+        public TrimestreValor[] Trimestres { get; set; } =
+        {
+            new TrimestreValor(), new TrimestreValor(), new TrimestreValor(), new TrimestreValor()
+        };
+    }
+
+    private class Bloco
+    {
+        public string Nome { get; set; } = "";
+        public decimal PesoBloco { get; set; }
+        public bool Expandido { get; set; } = true;
+        public List<Indicador> Indicadores { get; set; } = new();
+    }
+
+    // ===================== Estado =====================
+    private Perfil _perfil = Perfil.Gestor;
+    private int _trimApuracao = 0;
+    private bool SomenteLeitura => _perfil == Perfil.Funcionario;
+
+    private bool _modalBlocoAberto = false;
+    private string _novoBlocoNome = "";
+    private decimal? _novoBlocoPeso;
+
+    private readonly string[] _catalogoBlocos =
+    {
+        "BAU — Atividades Rotina",
+        "Projetos Estratégicos",
+        "Competências & Comportamental",
+        "Resultados / KPIs",
+        "Gestão de Pessoas"
+    };
+
+    private Funcionario _func = new Funcionario
+    {
+        Nome = "FUNCIONÁRIO 1",
+        Cargo = "Analista Financeiro Pl.",
+        Admissao = "20/04/2025",
+        AreaGerencial = "Campanhas & Incentivos",
+        GrupoCompeticao = "Pleno-1"
+    };
+
+    private List<Bloco> _blocos = new();
+
+    protected override void OnInitialized()
+    {
+        _blocos.Add(new Bloco
+        {
+            Nome = "BAU — Atividades Rotina",
+            PesoBloco = 35m,
+            Expandido = true,
+            Indicadores = new List<Indicador>
+            {
+                new Indicador
+                {
+                    Descricao = "Atendimento de chamados de incentivos",
+                    Trimestres = new[]
+                    {
+                        new TrimestreValor { Peso = 50m, Nota = 115m },
+                        new TrimestreValor { Peso = 50m, Nota = 120m },
+                        new TrimestreValor { Peso = 50m, Nota = 122m },
+                        new TrimestreValor { Peso = 50m, Nota = 130m }
+                    }
+                },
+                new Indicador
+                {
+                    Descricao = "Conciliação mensal de premiações",
+                    Trimestres = new[]
+                    {
+                        new TrimestreValor { Peso = 50m, Nota = 110m },
+                        new TrimestreValor { Peso = 50m, Nota = 118m },
+                        new TrimestreValor { Peso = 50m, Nota = 120m },
+                        new TrimestreValor { Peso = 50m, Nota = 130m }
+                    }
+                }
+            }
+        });
+    }
+
+    // ===================== Cálculos =====================
+    // Nota do bloco no trimestre = Σ(peso_ind × nota_ind) / 100
+    private decimal NotaBlocoTrimestre(Bloco b, int t)
+    {
+        decimal soma = 0m;
+        foreach (var ind in b.Indicadores)
+        {
+            soma += ind.Trimestres[t].Peso * ind.Trimestres[t].Nota;
+        }
+        return Math.Round(soma / 100m, 2);
+    }
+
+    // Nota do trimestre = Σ(nota_bloco × peso_bloco) / Σ(pesos_blocos)
+    private decimal NotaTrimestre(int t)
+    {
+        decimal somaPonderada = 0m;
+        decimal somaPesos = 0m;
+        foreach (var b in _blocos)
+        {
+            somaPonderada += NotaBlocoTrimestre(b, t) * b.PesoBloco;
+            somaPesos += b.PesoBloco;
+        }
+        if (somaPesos == 0m)
+        {
+            return 0m;
+        }
+        return Math.Round(somaPonderada / somaPesos, 2);
+    }
+
+    // Nota final = média dos 4 trimestres
+    private decimal NotaFinal
+    {
+        get
+        {
+            decimal soma = 0m;
+            for (int t = 0; t < 4; t++)
+            {
+                soma += NotaTrimestre(t);
+            }
+            return Math.Round(soma / 4m, 2);
+        }
+    }
+
+    private decimal SomaPesosBlocos()
+    {
+        decimal soma = 0m;
+        foreach (var b in _blocos)
+        {
+            soma += b.PesoBloco;
+        }
+        return soma;
+    }
+
+    private decimal SomaPesosIndicadores(Bloco b, int t)
+    {
+        decimal soma = 0m;
+        foreach (var ind in b.Indicadores)
+        {
+            soma += ind.Trimestres[t].Peso;
+        }
+        return soma;
+    }
+
+    private bool TodosPesosTrimestreOk(Bloco b)
+    {
+        for (int t = 0; t < 4; t++)
+        {
+            if (SomaPesosIndicadores(b, t) != 100m)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private (string Texto, string Classe, string Icone) ObterStatusPesos(bool blocosOk)
+    {
+        string texto;
+        string classe;
+        string icone;
+        switch (blocosOk)
+        {
+            case true:
+                texto = "Pronto para salvar";
+                classe = "status-ok";
+                icone = "bi-check-circle-fill";
+                break;
+            case false:
+                texto = "Ajuste os pesos";
+                classe = "status-warn";
+                icone = "bi-info-circle-fill";
+                break;
+            default:
+                texto = "";
+                classe = "";
+                icone = "";
+                break;
+        }
+        return (texto, classe, icone);
+    }
+
+    // ===================== Ações =====================
+    private void SelecionarPerfil(Perfil p)
+    {
+        _perfil = p;
+    }
+
+    private void OnTrocarPeriodo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int idx))
+        {
+            _trimApuracao = idx;
+        }
+    }
+
+    private void AdicionarIndicador(Bloco b)
+    {
+        b.Indicadores.Add(new Indicador { Descricao = "" });
+    }
+
+    private void RemoverIndicador(Bloco b, Indicador ind)
+    {
+        b.Indicadores.Remove(ind);
+    }
+
+    private void RemoverBloco(Bloco b)
+    {
+        _blocos.Remove(b);
+    }
+
+    private List<string> BlocosDisponiveis()
+    {
+        var usados = _blocos.Select(x => x.Nome).ToHashSet();
+        return _catalogoBlocos.Where(n => !usados.Contains(n)).ToList();
+    }
+
+    private void AbrirModalBloco()
+    {
+        _novoBlocoNome = "";
+        _novoBlocoPeso = null;
+        _modalBlocoAberto = true;
+    }
+
+    private void FecharModalBloco()
+    {
+        _modalBlocoAberto = false;
+    }
+
+    private void SalvarNovoBloco()
+    {
+        if (string.IsNullOrWhiteSpace(_novoBlocoNome) || !_novoBlocoPeso.HasValue)
+        {
+            return;
+        }
+
+        _blocos.Add(new Bloco
+        {
+            Nome = _novoBlocoNome,
+            PesoBloco = _novoBlocoPeso.Value,
+            Expandido = true,
+            Indicadores = new List<Indicador>
+            {
+                new Indicador { Descricao = "" }
+            }
+        });
+
+        _modalBlocoAberto = false;
+    }
+}

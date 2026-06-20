@@ -1,0 +1,2939 @@
+@page "/pade"
+@rendermode InteractiveServer
+@using System.Globalization
+
+@*
+    ============================================================================
+    PADE IPC - Portal completo (single-file, Blazor Server / .NET 9)
+    ----------------------------------------------------------------------------
+    Shell (sidebar + topbar) + 7 telas, alternadas pelo papel:
+      GESTOR      -> Início, Equipe, Contrato de Metas, Áreas Atendidas, Histórico
+      FUNCIONÁRIO -> Minha performance
+      ADMIN       -> Apuração do PADE
+    Dados mock centralizados em PadeMock (@code). Bootstrap Icons via CDN.
+    Cálculos: NotaPADE = Contrato×70% + Resultado(Áreas)×30%.
+    ============================================================================
+*@
+
+<HeadContent>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+</HeadContent>
+
+<div class="pade-app">
+
+    @* =============================== SIDEBAR =============================== *@
+    <aside class="pade-side">
+        <div class="pade-side-top">
+            <a class="pade-sair" href="javascript:void(0)">Sair</a>
+            <div class="pade-side-avatar">@UsuarioAvatar()</div>
+            <div class="pade-side-nome">@UsuarioNome()</div>
+            <span class="pade-side-papel">@UsuarioPapelLabel()</span>
+        </div>
+
+        <nav class="pade-nav">
+            @foreach (var item in NavDoPapel())
+            {
+                var it = item;
+                <button type="button"
+                        class="pade-nav-item @(_rota == it.Rota ? "ativo" : "")"
+                        @onclick="() => _rota = it.Rota">
+                    <i class="bi @it.Icone"></i>
+                    <span>@it.Titulo</span>
+                </button>
+            }
+        </nav>
+
+        @if (_papel == Papel.Funcionario)
+        {
+            <div class="pade-vercomo">
+                <label>VER COMO</label>
+                <select class="pade-input" @bind="_funcSelecionadoId">
+                    @foreach (var f in PadeMock.Funcionarios)
+                    {
+                        <option value="@f.Id">@f.Nome</option>
+                    }
+                </select>
+            </div>
+        }
+    </aside>
+
+    @* ================================ MAIN ================================ *@
+    <main class="pade-main">
+
+        <header class="pade-topbar">
+            <div class="pade-topbar-tit">
+                <span class="pade-pade">PADE IPC</span>
+                <h1>@TituloPagina()</h1>
+                <span class="pade-sub">@SubtituloPagina()</span>
+            </div>
+
+            <div class="pade-topbar-dir">
+                <div class="pade-papel-toggle">
+                    @foreach (var p in (Papel[])Enum.GetValues(typeof(Papel)))
+                    {
+                        var pp = p;
+                        <button type="button"
+                                class="pade-papel-btn @(_papel == pp ? "ativo" : "")"
+                                @onclick="() => TrocarPapel(pp)">
+                            <i class="bi @IconePapel(pp)"></i>
+                            <span>@NomePapel(pp)</span>
+                        </button>
+                    }
+                </div>
+                <div class="pade-periodo">
+                    <i class="bi bi-calendar-event"></i>
+                    <select class="pade-periodo-sel" value="@_trimApuracao" @onchange="OnTrocarPeriodo">
+                        @for (int t = 0; t < 4; t++)
+                        {
+                            var tl = t;
+                            <option value="@tl">@(tl + 1)º TRIMESTRE · 2026</option>
+                        }
+                    </select>
+                </div>
+                <button type="button" class="pade-ic-btn"><i class="bi bi-bell"></i><span class="pade-dot"></span></button>
+                <button type="button" class="pade-ic-btn"><i class="bi bi-file-earmark-text"></i></button>
+                <div class="pade-user">
+                    <span class="pade-user-av">@UsuarioAvatar()</span>
+                    <div class="pade-user-info">
+                        <strong>@UsuarioNome()</strong>
+                        <span>@UsuarioDescricao()</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="pade-conteudo">
+
+            @* ----------------------------- GESTOR :: INÍCIO ----------------------------- *@
+            @if (_rota == "g-inicio")
+            {
+                <div class="pade-banner">
+                    <div>
+                        <span class="pade-banner-eyebrow">BEM-VINDA</span>
+                        <h2 class="pade-banner-h">Olá, GESTOR(A).</h2>
+                        <p class="pade-banner-p">
+                            Período de apuração: <b>@(_trimApuracao + 1)º Trimestre · 2026</b>.
+                            Você tem <b>36 dias</b> para finalizar as avaliações da sua equipe.
+                        </p>
+                    </div>
+                    <div class="pade-banner-donut">
+                        @((MarkupString)DonutSimples("36", "DIAS", 0.62, "#ffffff", "rgba(255,255,255,.25)"))
+                    </div>
+                </div>
+
+                <div class="pade-stats-4">
+                    <div class="pade-stat pade-stat-red">
+                        <div class="pade-stat-top"><span>EQUIPE TOTAL</span><i class="bi bi-people"></i></div>
+                        <strong>8</strong>
+                    </div>
+                    <div class="pade-stat">
+                        <div class="pade-stat-top"><span>AVALIAÇÕES PENDENTES</span><i class="bi bi-info-circle"></i></div>
+                        <strong>2</strong>
+                        <small>0 pendente · 2 não iniciada</small>
+                    </div>
+                    <div class="pade-stat">
+                        <div class="pade-stat-top"><span>CONCLUÍDAS</span><i class="bi bi-check-circle"></i></div>
+                        <strong>6</strong>
+                        <small>de 8 colaboradores</small>
+                    </div>
+                    <div class="pade-stat">
+                        <div class="pade-stat-top"><span>EM LICENÇA</span><i class="bi bi-info-circle"></i></div>
+                        <strong>1</strong>
+                        <small>preenchimento como n/a</small>
+                    </div>
+                </div>
+
+                <div class="pade-2col">
+                    <div class="pade-card">
+                        <div class="pade-card-head">
+                            <span class="pade-card-tit"><i class="bi bi-bell"></i> Notificações <span class="pade-chip-novas">4 NOVAS</span></span>
+                            <a href="javascript:void(0)" class="pade-link">Ver todas</a>
+                        </div>
+                        @foreach (var n in PadeMock.Notificacoes)
+                        {
+                            <div class="pade-notif">
+                                <span class="pade-notif-ic"><i class="bi @n.Icone"></i></span>
+                                <div class="pade-notif-txt">
+                                    <strong>@n.Titulo</strong>
+                                    <span>@n.Descricao</span>
+                                </div>
+                                <div class="pade-notif-meta">
+                                    <a href="javascript:void(0)" class="pade-link">@n.Acao</a>
+                                    <small>@n.Quando</small>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="pade-card">
+                        <div class="pade-card-head">
+                            <span class="pade-card-tit">Composição PADE</span>
+                            <span class="pade-mini">1ºTRI</span>
+                        </div>
+                        <p class="pade-muted-sm">média da sua equipe</p>
+                        <div class="pade-comp">
+                            <div class="pade-comp-donut">
+                                @((MarkupString)DonutSimples("93,18", "MÉDIA", 0.72, "#8b1a3f", "#efe3e7"))
+                            </div>
+                            <div class="pade-comp-leg">
+                                <div class="pade-leg-row"><span class="pade-dotc" style="background:#8b1a3f"></span> Contrato de Metas <small>70% da nota PADE</small><b>85,4%</b></div>
+                                <div class="pade-leg-row"><span class="pade-dotc" style="background:#d23a5c"></span> Áreas Atendidas <small>30% da nota PADE</small><b>111,4%</b></div>
+                                <div class="pade-leg-row pade-leg-total">Nota PADE média <b>93,18%</b></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pade-stats-3">
+                    <div class="pade-mini-card"><i class="bi bi-file-earmark-text"></i><div><strong>Manual do Programa</strong><span>Regras, pesos e critérios da apuração PADE.</span></div></div>
+                    <div class="pade-mini-card"><i class="bi bi-people"></i><div><strong>Hierarquia da equipe</strong><span>Identificou alguém que não deveria estar sob sua gestão? Movimente.</span></div><i class="bi bi-chevron-right pade-chev"></i></div>
+                    <div class="pade-mini-card"><i class="bi bi-info-circle"></i><div><strong>Dúvidas e sugestões</strong><span>Fale com o time Campanhas &amp; Incentivos.</span></div><i class="bi bi-chevron-right pade-chev"></i></div>
+                </div>
+            }
+
+            @* ----------------------------- GESTOR :: EQUIPE ----------------------------- *@
+            @if (_rota == "g-equipe")
+            {
+                <div class="pade-tabs">
+                    @foreach (var tab in EquipeTabs())
+                    {
+                        var tb = tab;
+                        <button type="button" class="pade-tab @(_equipeFiltro == tb.Key ? "ativo" : "")"
+                                @onclick="() => _equipeFiltro = tb.Key">
+                            @tb.Label <span class="pade-tab-n">@tb.Count</span>
+                        </button>
+                    }
+                    <div class="pade-tabs-dir">
+                        <div class="pade-busca"><i class="bi bi-search"></i><input placeholder="Buscar profissional..." @bind="_equipeBusca" @bind:event="oninput" /></div>
+                        <button class="pade-btn pade-btn-outline"><i class="bi bi-download"></i> Exportar</button>
+                    </div>
+                </div>
+
+                <div class="pade-grid-func">
+                    @foreach (var f in EquipeFiltrada())
+                    {
+                        var fn = f;
+                        <div class="pade-func-card">
+                            <div class="pade-func-card-head">
+                                <span class="pade-av" style="background:@fn.CorAvatar">@fn.Id</span>
+                                <div class="pade-func-card-nome">
+                                    <strong>@fn.Nome</strong>
+                                    <span>@fn.Cargo · @fn.Grupo</span>
+                                </div>
+                                @{
+                                    var bdg = BadgeEquipe(fn);
+                                }
+                                @if (bdg is not null)
+                                {
+                                    <span class="pade-badge @bdg.Value.Classe">@bdg.Value.Texto</span>
+                                }
+                            </div>
+                            <div class="pade-func-card-body">
+                                <div class="pade-mini-donut">
+                                    @((MarkupString)DonutSimples(FmtNum(NotaPade(fn)), "", Math.Min((double)NotaPade(fn) / 130d, 1d), "#8b1a3f", "#efe3e7", 88))
+                                </div>
+                                <div class="pade-barras">
+                                    <div class="pade-barra-row"><span>Contrato (70%)</span><b>@FmtNum(NotaContrato(fn))</b></div>
+                                    <div class="pade-barra"><div class="pade-barra-fill" style="width:@(Math.Min((double)NotaContrato(fn), 130) / 130 * 100)%"></div></div>
+                                    <div class="pade-barra-row"><span>Áreas (30%)</span><b>@FmtNum(NotaAreas(fn))%</b></div>
+                                    <div class="pade-barra"><div class="pade-barra-fill" style="width:@(Math.Min((double)NotaAreas(fn), 130) / 130 * 100)%"></div></div>
+                                </div>
+                            </div>
+                            <div class="pade-status-row"><span>Contrato de Metas</span> @((MarkupString)StatusPill(fn.StatusContrato))</div>
+                            <div class="pade-status-row"><span>Áreas Atendidas<br /><small>atualizado automaticamente</small></span> @((MarkupString)StatusPill("CONCLUIDO"))</div>
+                            <button class="pade-btn pade-btn-primario pade-btn-full" @onclick="() => IrParaContrato(fn)"><i class="bi bi-pencil"></i> Avaliar contrato</button>
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ------------------------- GESTOR :: CONTRATO DE METAS ------------------------- *@
+            @if (_rota == "g-contrato")
+            {
+                var fc = PadeMock.F1;
+                <section class="pade-func-bar">
+                    <span class="pade-av pade-av-lg" style="background:@fc.CorAvatar">@fc.Id</span>
+                    <div class="pade-func-bar-dados">
+                        <h2>@fc.Nome</h2>
+                        <div class="pade-func-bar-grid">
+                            <span><b>Cargo:</b> @fc.Cargo</span>
+                            <span><b>Admissão:</b> @fc.Admissao</span>
+                            <span class="pade-muted">Área Gerencial: <span class="pade-ink">@fc.AreaGerencial</span></span>
+                            <span><b>Grupo de Competição:</b> <span class="pade-wine">@fc.Grupo</span></span>
+                        </div>
+                        <button class="pade-btn-licenca"><i class="bi bi-info-circle"></i> Informar licença</button>
+                    </div>
+                    <div class="pade-func-bar-donut">
+                        @((MarkupString)DonutSimples(Fmt2(NotaContrato(fc)), "NOTA FINAL", Math.Min((double)NotaContrato(fc) / 130d, 1d), "#8b1a3f", "#efe3e7"))
+                    </div>
+                    <div class="pade-func-bar-acoes">
+                        <button class="pade-btn pade-btn-primario"><i class="bi bi-check-lg"></i> Salvar e enviar</button>
+                        <button class="pade-btn pade-btn-outline"><i class="bi bi-pencil"></i> Salvar rascunho</button>
+                        <button class="pade-btn pade-btn-texto"><i class="bi bi-x-lg"></i> Fechar sem salvar</button>
+                    </div>
+                </section>
+
+                <section class="pade-tri-cards">
+                    @for (int t = 0; t < 4; t++)
+                    {
+                        var tl = t;
+                        var ap = tl == _trimApuracao;
+                        <div class="pade-tri-card @(ap ? "ativo" : "")">
+                            <div class="pade-tri-top"><span>@(tl + 1)º TRIMESTRE</span>@if (ap){
+                                <span class="pade-tri-badge">EM APURAÇÃO</span>
+                            }
+                        </div>
+                        <strong>@Fmt2(NotaContratoTri(fc, tl))%</strong>
+                    </div>
+                }
+                <div class="pade-tri-card final">
+                    <div class="pade-tri-top"><span>NOTA FINAL</span></div>
+                    <strong>@Fmt2(NotaContrato(fc))%</strong>
+                </div>
+            </section>
+
+               
+            decimal somaBlocos = SomaPesosBlocos(fc);
+            bool blocosOk = somaBlocos == 100m;
+
+            <section class="pade-pesos">
+                <div class="pade-pesos-info">
+                    <span class="pade-pesos-tit">Soma dos pesos dos blocos (deve totalizar 100%)</span>
+                    <div class="pade-pesos-track"><div class="pade-pesos-fill @(blocosOk ? "ok" : "warn")" style="width:@(Math.Min((double)somaBlocos, 100d))%"></div></div>
+                    <span class="pade-pesos-val @(blocosOk ? "ok" : "warn")">@FmtNum(somaBlocos)<small>/100%</small></span>
+                </div>
+                <div class="pade-pesos-status @(blocosOk ? "status-ok" : "status-warn")">
+                    <i class="bi @(blocosOk ? "bi-check-circle-fill" : "bi-info-circle-fill")"></i>
+                    <span>@(blocosOk ? "Pronto para salvar" : "Ajuste os pesos")</span>
+                </div>
+            </section>
+
+            @foreach (var bloco in fc.Blocos!)
+            {
+                var b = bloco;
+                <div class="pade-bloco">
+                    <div class="pade-bloco-head">
+                        <button class="pade-chevron" @onclick="() => b.Expandido = !b.Expandido"><i class="bi @(b.Expandido ? "bi-chevron-down" : "bi-chevron-right")"></i></button>
+                        <div class="pade-bloco-barra"></div>
+                        <div class="pade-bloco-tit"><strong>@b.Nome</strong><span>@b.Indicadores.Count indicadores · @(TodosPesosTriOk(b) ? "pesos por trimestre OK" : "ajustar pesos")</span></div>
+                        <div class="pade-bloco-peso"><label>PESO DO BLOCO</label><input type="number" min="0" max="100" class="pade-input pade-input-peso" @bind="b.PesoBloco" @bind:event="oninput" /><span>%</span></div>
+                        <div class="pade-bloco-nota"><span>@(_trimApuracao + 1)ºTRI</span><strong>@Fmt2(NotaBlocoTri(b, _trimApuracao))%</strong></div>
+                        <button class="pade-lix" @onclick="() => fc.Blocos!.Remove(b)"><i class="bi bi-trash3"></i></button>
+                    </div>
+
+                    @if (b.Expandido)
+                    {
+                        <div class="pade-tab-wrap">
+                            <table class="pade-tabela">
+                                <thead>
+                                    <tr><th class="pade-col-ind" rowspan="2">INDICADOR</th>@for (int t = 0; t < 4; t++){
+                                        <th colspan="2" class="pade-th-grp">@(t + 1)º TRIMESTRE</th>
+                                    }
+                                    <th rowspan="2"></th></tr>
+                                    <tr class="pade-th-sub">@for (int t = 0; t < 4; t++){
+                                        <th>PESO</th><th>NOTA</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{
+                                    int li = 0;
+                                }
+                                @foreach (var indic in b.Indicadores)
+                                {
+                                    var ind = indic; li++;
+                                    <tr>
+                                        <td class="pade-col-ind"><span class="pade-num-li">@li</span><input class="pade-input pade-input-txt" @bind="ind.Descricao" @bind:event="oninput" /></td>
+                                        @for (int t = 0; t < 4; t++)
+                                        {
+                                            var tl = t;
+                                            <td class="pade-cel-num"><div class="pade-suf"><input type="number" class="pade-input" @bind="ind.Tri[tl].Peso" @bind:event="oninput" /><span>%</span></div></td>
+                                            <td class="pade-cel-num"><div class="pade-suf"><input type="number" class="pade-input" @bind="ind.Tri[tl].Nota" @bind:event="oninput" /><span>%</span></div></td>
+                                        }
+                                        <td><button class="pade-rem-ind" @onclick="() => b.Indicadores.Remove(ind)"><i class="bi bi-x-lg"></i></button></td>
+                                    </tr>
+                                }
+                                <tr class="pade-soma">
+                                    <td class="pade-col-ind">SOMA DOS PESOS</td>
+                                    @for (int t = 0; t < 4; t++)
+                                    {
+                                        var tl = t; var sp = SomaPesosInd(b, tl); bool ok = sp == 100m;
+                                        <td colspan="2" class="pade-cel-soma"><span class="pade-pill-soma @(ok ? "ok" : "warn")">@FmtNum(sp)% <i class="bi @(ok ? "bi-check-lg" : "bi-exclamation-triangle")"></i></span></td>
+                                    }
+                                    <td></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <button class="pade-add-link" @onclick="() => b.Indicadores.Add(new Indicador())"><i class="bi bi-plus-lg"></i> Adicionar indicador</button>
+                }
+            </div>
+        }
+        <button class="pade-add-bloco" @onclick="() => AdicionarBlocoNovo(fc)"><i class="bi bi-plus-lg"></i> Adicionar novo bloco</button>
+    }
+
+    @* ------------------------- GESTOR :: ÁREAS ATENDIDAS ------------------------- *@
+    @if (_rota == "g-areas")
+    {
+        var fa = PadeMock.F1;
+        <div class="pade-info-banner">
+            <span class="pade-info-ic"><i class="bi bi-graph-up-arrow"></i></span>
+            <div>
+                <strong>Resultado Operacional / Lucro Líquido — 30% da nota PADE</strong>
+                <p>Apuramos o resultado de <b>cada área atendida</b> e tiramos a <b>média simples</b> — independente do % de atendimento. Acompanhamos trimestralmente, mas para o PADE vale o <b>resultado final (anual)</b>.</p>
+            </div>
+            <span class="pade-fonte">FONTE: SAS · RESULTADO OP.</span>
+        </div>
+
+        <section class="pade-areas-head">
+            <span class="pade-av pade-av-lg" style="background:@fa.CorAvatar">@fa.Id</span>
+            <div class="pade-areas-head-nome"><h2>@fa.Nome</h2><span>@fa.Cargo · @fa.Grupo</span></div>
+            <div class="pade-areas-head-donut">@((MarkupString)DonutSimples("121,00", "RESULTADO", 0.93, "#8b1a3f", "#efe3e7"))</div>
+            <div class="pade-areas-head-stats">
+                <div><span>Áreas atendidas</span><b>3</b></div>
+                <div><span>Último trimestre apurado</span><b>3º TRI</b></div>
+                <div><span>Resultado final (0–130%)</span><b>121,00%</b></div>
+                <div><span>Contribuição PADE (×30%)</span><b>36,30%</b></div>
+            </div>
+        </section>
+
+        <div class="pade-chips">
+            <span class="pade-chips-lbl">VER OUTRO FUNCIONÁRIO:</span>
+            @foreach (var f in PadeMock.Funcionarios)
+            {
+                var fl = f;
+                <button class="pade-chip @(_areaFuncId == fl.Id ? "ativo" : "")" @onclick="() => _areaFuncId = fl.Id">FUNCIONÁRIO</button>
+            }
+        </div>
+
+        <div class="pade-card">
+            <div class="pade-card-head"><span class="pade-card-tit">Resultado Operacional por área e por trimestre</span><span class="pade-mini">Read-only · atualizado pela base</span></div>
+            <p class="pade-muted-sm">Média simples na última linha · resultado anual destacado à direita</p>
+            <table class="pade-tabela pade-tabela-areas">
+                <thead><tr><th class="pade-col-ind">ÁREA</th><th>1º TRI</th><th>2º TRI</th><th>3º TRI ●</th><th>4º TRI</th><th>RESULT. FINAL</th></tr></thead>
+                <tbody>
+                    @foreach (var ar in fa.Areas!)
+                    {
+                        <tr>
+                            <td class="pade-col-ind"><span class="pade-dotc" style="background:@ar.Cor"></span> @ar.Nome</td>
+                            @for (int t = 0; t < 4; t++)
+                            {
+                                <td>@(ar.Tri[t].HasValue ? Fmt1(ar.Tri[t]!.Value) + "%" : "—")</td>
+                            }
+                            <td><span class="pade-pill-final">@Fmt1(ResultFinalArea(ar))%</span></td>
+                        </tr>
+                    }
+                    <tr class="pade-media-tri">
+                        <td class="pade-col-ind">MÉDIA DO TRIMESTRE</td>
+                        @for (int t = 0; t < 4; t++)
+                        {
+                            var m = MediaAreasTri(fa, t);
+                            <td>@(m.HasValue ? Fmt1(m.Value) + "%" : "—")</td>
+                        }
+                        <td></td>
+                    </tr>
+                    <tr class="pade-result-final">
+                        <td class="pade-col-ind pade-wine">RESULTADO FINAL → PADE</td>
+                        <td colspan="3" class="pade-muted">Média simples dos resultados finais das áreas atendidas</td>
+                        <td class="pade-muted-sm">121,00% × 30%</td>
+                        <td class="pade-wine"><b>+36,30</b></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pade-card">
+            <div class="pade-card-head"><span class="pade-card-tit">Evolução do resultado (média trimestral)</span></div>
+            @((MarkupString)GraficoLinha(new double[] { 115.7, 118.0, 121.0 }, new[] { "1º TRI", "2º TRI", "3º TRI", "4º TRI" }))
+        </div>
+    }
+
+    @* ----------------------------- GESTOR :: HISTÓRICO ----------------------------- *@
+    @if (_rota == "g-historico")
+    {
+        <div class="pade-hist-banner">
+            <span class="pade-hist-ic"><i class="bi bi-trophy"></i></span>
+            <div>
+                <span class="pade-banner-eyebrow">HISTÓRICO · APENAS GESTOR</span>
+                <h2>Premiações dos seus funcionários</h2>
+                <p>Acompanhe quantas vezes cada profissional ganhou o programa, em qual posição e a nota PADE de cada ano. Esta tela é exclusiva da gestão.</p>
+            </div>
+        </div>
+
+        <div class="pade-stats-4">
+            <div class="pade-stat"><div class="pade-stat-top"><span>ANOS DE HISTÓRICO</span><i class="bi bi-calendar3"></i></div><strong>4</strong></div>
+            <div class="pade-stat"><div class="pade-stat-top"><span>PROFISSIONAIS</span><i class="bi bi-people"></i></div><strong>8</strong></div>
+            <div class="pade-stat pade-stat-red"><div class="pade-stat-top"><span>VITÓRIAS DA EQUIPE</span><i class="bi bi-trophy"></i></div><strong>3</strong></div>
+            <div class="pade-stat"><div class="pade-stat-top"><span>TOP 3 NO ÚLTIMO ANO</span></div><strong>0</strong></div>
+        </div>
+
+        <div class="pade-card">
+            <div class="pade-card-head"><div><span class="pade-card-tit">Histórico ano a ano</span><p class="pade-muted-sm">Posição no ranking · nota final · medalha quando ficou no Top 3</p></div><a class="pade-link" href="javascript:void(0)"><i class="bi bi-download"></i> Exportar</a></div>
+            <table class="pade-tabela pade-tabela-hist">
+                <thead><tr><th class="pade-col-ind">FUNCIONÁRIO</th><th>VITÓRIAS</th><th>2022</th><th>2023</th><th>2024</th><th>2025</th></tr></thead>
+                <tbody>
+                    @foreach (var f in PadeMock.Funcionarios)
+                    {
+                        <tr>
+                            <td class="pade-col-ind"><span class="pade-av pade-av-sm" style="background:@f.CorAvatar">@f.Id</span><div class="pade-hist-nome"><strong>@f.Nome</strong><span>@f.Cargo</span></div></td>
+                            <td><span class="pade-vit">@f.Vitorias×</span></td>
+                            @foreach (var h in f.Historico)
+                            {
+                                <td>
+                                    @if (h.Posicao.HasValue)
+                                    {
+                                        <span class="pade-pos @(h.Posicao.Value <= 3 ? (h.Posicao.Value == 1 ? "ouro" : "bronze") : "")">@(h.Posicao.Value <= 3 ? "🏅 " : "")@(h.Posicao.Value)º</span>
+                                        <div class="pade-pos-nota">@Fmt0(h.Nota)%</div>
+                                    }
+                                    else
+                                    {
+
+                                        <span class="pade-muted">—</span>
+                                    }
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <p class="pade-secao-lbl">PROFISSIONAIS COM MAIS CONQUISTAS</p>
+        <div class="pade-stats-4">
+            @foreach (var f in PadeMock.Funcionarios.Where(x => x.Vitorias > 0).OrderByDescending(x => x.Vitorias).Take(2)
+                      .Concat(PadeMock.Funcionarios.Where(x => x.Id is "F2" or "F3")))
+            {
+                <div class="pade-conq-card">
+                    <span class="pade-av" style="background:@f.CorAvatar">@f.Id</span>
+                    <div><strong>@f.Nome</strong><span>@f.Cargo</span><small>Último: 2025 · 5º lugar</small></div>
+                    @if (f.Vitorias > 0)
+                    {
+                        <span class="pade-badge pade-badge-wine">@f.Vitorias× VENCEDOR</span>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @* ------------------------- FUNCIONÁRIO :: MINHA PERFORMANCE ------------------------- *@
+    @if (_rota == "f-performance")
+    {
+        var fp = PadeMock.PorId(_funcSelecionadoId);
+        <div class="pade-banner pade-banner-func">
+            <div class="pade-banner-donut pade-banner-donut-lg">@((MarkupString)DonutSimples("", "NOTA PADE", 0.0, "rgba(255,255,255,.9)", "rgba(255,255,255,.25)"))</div>
+            <div>
+                <span class="pade-banner-eyebrow">SUA PERFORMANCE</span>
+                <h2 class="pade-banner-h">Olá, @fp.Nome.</h2>
+                <p class="pade-banner-p">Sua nota atual no programa PADE é <b>@Fmt2(NotaPade(fp))%</b>. Acompanhe abaixo o detalhe da composição da sua nota — você não tem acesso ao ranking ou às notas dos colegas.</p>
+            </div>
+            <div class="pade-trofeu"><i class="bi bi-trophy"></i><strong>@fp.Vitorias×</strong><span>VEZES QUE GANHOU O PROGRAMA</span></div>
+        </div>
+
+        <div class="pade-card pade-grupo">
+            <span class="pade-info-ic"><i class="bi bi-people"></i></span>
+            <div class="pade-grupo-txt">
+                <span class="pade-banner-eyebrow">SEU GRUPO DE COMPETIÇÃO</span>
+                <h3>@fp.Grupo</h3>
+                <p>Você compete com profissionais do mesmo grupo, definido pela combinação cargo + superintendência. O ranking interno não é compartilhado — você vê apenas a sua nota e a do primeiro colocado.</p>
+            </div>
+            <div class="pade-grupo-notas">
+                <div class="pade-nota-box wine"><span>SUA NOTA</span><b>@Fmt1(NotaPade(fp))%</b></div>
+                <div class="pade-nota-box"><span>TOP 1 DO GRUPO</span><b>@Fmt1(NotaPade(fp))%</b></div>
+            </div>
+        </div>
+
+        <div class="pade-2col">
+            <div class="pade-card">
+                <div class="pade-card-head"><span class="pade-card-tit"><i class="bi bi-bar-chart"></i> Contrato de Metas</span><span class="pade-badge pade-badge-wine">70% do PADE</span></div>
+                <p class="pade-muted-sm">Definido pelo seu gestor a cada trimestre</p>
+                <div class="pade-ind-val">Nota deste indicador <b>@Fmt2(NotaContrato(fp))%</b></div>
+                <div class="pade-ind-bar"></div>
+                <div class="pade-ind-calc"><span>@Fmt0(NotaContrato(fp))% × 70%</span><span>= vale na sua nota PADE <b>@Fmt2(NotaContrato(fp) * 0.70m)</b></span></div>
+            </div>
+            <div class="pade-card">
+                <div class="pade-card-head"><span class="pade-card-tit"><i class="bi bi-graph-up-arrow"></i> Resultado Operacional</span><span class="pade-badge pade-badge-wine">30% do PADE</span></div>
+                <p class="pade-muted-sm">Média dos resultados das áreas atendidas</p>
+                <div class="pade-ind-val">Nota deste indicador <b>@Fmt2(NotaAreas(fp))%</b></div>
+                <div class="pade-ind-bar"></div>
+                <div class="pade-ind-calc"><span>@Fmt0(NotaAreas(fp))% × 30%</span><span>= vale na sua nota PADE <b>@Fmt2(NotaAreas(fp) * 0.30m)</b></span></div>
+            </div>
+        </div>
+
+        <div class="pade-card">
+            <div class="pade-card-head"><div><span class="pade-card-tit">Sua evolução trimestral</span><p class="pade-muted-sm">Nota do Contrato de Metas em cada trimestre</p></div></div>
+            <div class="pade-evo">
+                @for (int t = 0; t < 4; t++)
+                {
+                    var tl = t; var ap = tl == _trimApuracao;
+                    <div class="pade-evo-card">
+                        <div class="pade-evo-top"><span>@(tl + 1)º TRIMESTRE</span>@if (ap){
+                            <span class="pade-tri-badge wine">EM APURAÇÃO</span>
+                        }else
+                        {
+
+                            <span class="pade-aguard">AGUARDANDO</span>
+                        }
+                    </div>
+                    <strong>@Fmt2(NotaContratoTri(fp, tl))%</strong>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="pade-card">
+        <div class="pade-card-head"><div><span class="pade-card-tit">Indicadores do Contrato de Metas</span><p class="pade-muted-sm">Visualização dos indicadores definidos pelo seu gestor — sem possibilidade de edição</p></div></div>
+        @foreach (var b in (fp.Blocos ?? PadeMock.F1.Blocos!))
+        {
+            <div class="pade-ro-bloco">
+                <div class="pade-ro-bloco-head"><div class="pade-bloco-barra"></div><strong>@b.Nome</strong><span class="pade-ro-peso">Peso do bloco: @FmtNum(b.PesoBloco)%</span></div>
+                <table class="pade-tabela pade-tabela-ro">
+                    <thead><tr><th class="pade-col-ind">INDICADOR</th>@for (int t = 0; t < 4; t++){
+                        <th>@(t + 1)º·PESO</th><th>NOTA</th>
+                    }
+                </tr></thead>
+                <tbody>
+                    @foreach (var ind in b.Indicadores)
+                    {
+                        <tr><td class="pade-col-ind">@ind.Descricao</td>@for (int t = 0; t < 4; t++){
+                            <td><span class="pade-ro-peso-cel">@FmtNum(ind.Tri[t].Peso)%</span></td><td><span class="pade-ro-nota-cel">@FmtNum(ind.Tri[t].Nota)%</span></td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+</div>
+
+<div class="pade-card">
+    <div class="pade-card-head"><span class="pade-card-tit">Suas áreas atendidas — Resultado Operacional</span></div>
+    <table class="pade-tabela">
+        <thead><tr><th class="pade-col-ind">ÁREA</th><th>DISTRIBUIÇÃO</th><th>RESULT. FINAL</th></tr></thead>
+        <tbody>
+            @foreach (var ar in (fp.Areas ?? PadeMock.F1.Areas!))
+            {
+                <tr><td class="pade-col-ind"><span class="pade-av pade-av-sm" style="background:@ar.Cor">@ar.Sigla</span><div class="pade-hist-nome"><strong>@ar.Nome</strong><span>Apuração trimestral via SAS</span></div></td><td>@FmtNum(ar.Distribuicao)%</td><td><span class="pade-pill-final">@Fmt1(ResultFinalArea(ar))%</span></td></tr>
+            }
+        </tbody>
+    </table>
+    <p class="pade-rodape-nota"><i class="bi bi-info-circle"></i> Esta tela mostra apenas a sua performance. Posições no ranking e notas de outros profissionais são restritas à administração do programa.</p>
+</div>
+            }
+
+@* ----------------------------- ADMIN :: APURAÇÃO ----------------------------- *@
+            @if (_rota == "a-apuracao")
+{
+    <div class="pade-filtros">
+        <span class="pade-filtros-lbl">FILTROS:</span>
+        <select class="pade-input"><option>Selecione</option></select>
+        <select class="pade-input"><option>Selecione</option></select>
+        <select class="pade-input"><option>Selecione</option></select>
+        <select class="pade-input"><option>Acumulado (todos os tri)</option></select>
+        <div class="pade-filtros-dir">
+            <button class="pade-btn pade-btn-outline"><i class="bi bi-arrow-clockwise"></i> Recalcular</button>
+            <button class="pade-btn pade-btn-outline"><i class="bi bi-download"></i> Exportar Excel</button>
+            <button class="pade-btn pade-btn-primario"><i class="bi bi-check-lg"></i> Enviar aos funcionários</button>
+        </div>
+    </div>
+
+    <div class="pade-stats-5">
+        <div class="pade-stat"><div class="pade-stat-top"><span>PROFISSIONAIS</span><i class="bi bi-people"></i></div><strong>8</strong></div>
+        <div class="pade-stat"><div class="pade-stat-top"><span>AGUARDANDO APURAÇÃO</span><i class="bi bi-info-circle"></i></div><strong>0</strong></div>
+        <div class="pade-stat"><div class="pade-stat-top"><span>AVALIAÇÕES SUSPEITAS</span><i class="bi bi-info-circle"></i></div><strong>0</strong></div>
+        <div class="pade-stat"><div class="pade-stat-top"><span>INELEGÍVEIS / DESÁGIO</span><i class="bi bi-info-circle"></i></div><strong>1 / 2</strong></div>
+        <div class="pade-stat pade-stat-red"><div class="pade-stat-top"><span>GRUPOS DE COMPETIÇÃO</span><i class="bi bi-bar-chart"></i></div><strong>3</strong></div>
+    </div>
+
+    <div class="pade-tabs pade-tabs-admin">
+        @{
+            var adminTabs = new[] { ("rank", "Ranking por grupo", "8"), ("aprov", "Aprovar / Devolver", "0"), ("susp", "Avaliações suspeitas", "0"), ("eleg", "Elegibilidade & Deságio", "3"), ("comp", "Comparativo entre grupos", "") };
+        }
+        @foreach (var t in adminTabs)
+        {
+            var tt = t;
+            <button class="pade-tab @(_adminTab == tt.Item1 ? "ativo" : "")" @onclick="() => _adminTab = tt.Item1">@tt.Item2 @if (tt.Item3 != ""){
+                <span class="pade-tab-n">@tt.Item3</span>
+            }
+        </button>
+    }
+</div>
+
+@foreach (var grupo in PadeMock.Grupos)
+{
+    var membros = PadeMock.Funcionarios.Where(f => f.Grupo == grupo).ToList();
+    var ranqueados = membros.Where(f => !f.Inelegivel).OrderByDescending(f => Ranking(f) ?? 0).ToList();
+    var inelegiveis = membros.Where(f => f.Inelegivel).ToList();
+    var inelegCount = inelegiveis.Count;
+    <div class="pade-grupo-rank">
+        <div class="pade-grupo-rank-head"><div class="pade-bloco-barra"></div><strong>Grupo de Competição: @grupo</strong><span class="pade-chip-cinza">@membros.Count profissionais@(inelegCount > 0 ? $" · {inelegCount} inelegível" : "")</span><span class="pade-mini pade-grupo-acum">Acumulado</span></div>
+        <table class="pade-tabela pade-tabela-rank">
+            <thead><tr><th>POS.</th><th class="pade-col-ind">PROFISSIONAL</th><th>CONTRATO (70%)</th><th>RESULT. (30%)</th><th>NOTA</th><th>DESÁGIO</th><th>RANKING</th><th></th></tr></thead>
+            <tbody>
+                @{
+                    int pos = 0;
+                }
+                @foreach (var f in ranqueados)
+                {
+                    pos++;
+                    <tr>
+                        <td><span class="pade-pos-num @(pos == 1 ? "ouro" : "")">@pos</span></td>
+                        <td class="pade-col-ind"><span class="pade-av pade-av-sm" style="background:@f.CorAvatar">@f.Id</span><div class="pade-hist-nome"><strong>@f.Nome</strong><span>@f.Cargo · @f.AreaGerencial</span></div></td>
+                        <td>@Fmt2(NotaContrato(f))%</td>
+                        <td>@Fmt2(NotaAreas(f))%</td>
+                        <td>@Fmt2(NotaPade(f))%</td>
+                        <td>@(f.DesagioPts > 0 ? $"-{f.DesagioPts:0} pts" : "—")</td>
+                        <td><span class="pade-rank-badge">@Fmt2(Ranking(f) ?? 0)%</span></td>
+                        <td><a class="pade-link" href="javascript:void(0)">Ver detalhe ›</a></td>
+                    </tr>
+                }
+                @foreach (var f in inelegiveis)
+                {
+                    <tr class="pade-ineleg">
+                        <td><span class="pade-pos-num ne">N/E</span></td>
+                        <td class="pade-col-ind"><span class="pade-av pade-av-sm" style="background:@f.CorAvatar">@f.Id</span><div class="pade-hist-nome"><strong>@f.Nome <span class="pade-badge pade-badge-ineleg">INELEGÍVEL</span></strong><span>@f.Cargo · @f.AreaGerencial</span></div></td>
+                        <td>0,00%</td>
+                        <td>@Fmt2(NotaAreas(f))%</td>
+                        <td>@Fmt2(NotaPade(f))%</td>
+                        <td>—</td>
+                        <td class="pade-muted">fora do ranking</td>
+                        <td><a class="pade-link" href="javascript:void(0)">Ver detalhe ›</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+            }
+
+</div>
+</main>
+</div>
+
+@* ================================ ESTILOS ================================ *@
+<style>
+    .pade-app {
+        --red: #cc092f;
+        --wine: #8b1a3f;
+        --wine-grad: linear-gradient(135deg,#9e2349,#6b1029);
+        --red-grad: linear-gradient(135deg,#d23a5c,#b21341);
+        --ink: #1f2733;
+        --muted: #6b7280;
+        --line: #ececef;
+        --soft: #faf7f8;
+        --green: #2e9e5b;
+        --green-bg: #e7f5ec;
+        --chip: #fdeef1;
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        color: var(--ink);
+        display: flex;
+        min-height: 100vh;
+        background: #f3f1f2;
+    }
+
+        .pade-app *, .pade-app *::before, .pade-app *::after {
+            box-sizing: border-box;
+        }
+
+    /* sidebar */
+    .pade-side {
+        width: 232px;
+        flex-shrink: 0;
+        background: linear-gradient(160deg,#cc092f,#a30724);
+        color: #fff;
+        padding: 18px 14px;
+    }
+
+    .pade-sair {
+        float: right;
+        color: #fff;
+        font-size: 12px;
+        text-decoration: underline;
+    }
+
+    .pade-side-top {
+        text-align: center;
+        padding: 8px 0 16px;
+        border-bottom: 1px solid rgba(255,255,255,.18);
+    }
+
+    .pade-side-avatar {
+        width: 84px;
+        height: 84px;
+        border-radius: 50%;
+        background: #f3d9de;
+        color: #8b1a3f;
+        font-size: 26px;
+        font-weight: 700;
+        display: grid;
+        place-items: center;
+        margin: 18px auto 10px;
+    }
+
+    .pade-side-nome {
+        font-size: 14px;
+        font-weight: 700;
+    }
+
+    .pade-side-papel {
+        display: inline-block;
+        margin-top: 6px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        background: rgba(255,255,255,.2);
+        padding: 3px 12px;
+        border-radius: 99px;
+    }
+
+    .pade-nav {
+        margin-top: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .pade-nav-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border: 0;
+        background: transparent;
+        color: rgba(255,255,255,.9);
+        padding: 11px 14px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        text-align: left;
+    }
+
+        .pade-nav-item:hover {
+            background: rgba(255,255,255,.12);
+        }
+
+        .pade-nav-item.ativo {
+            background: rgba(0,0,0,.18);
+            font-weight: 600;
+            box-shadow: inset 3px 0 0 #fff;
+        }
+
+    .pade-vercomo {
+        margin-top: 22px;
+        padding-top: 16px;
+        border-top: 1px solid rgba(255,255,255,.18);
+    }
+
+        .pade-vercomo label {
+            font-size: 10px;
+            letter-spacing: 1px;
+            opacity: .8;
+        }
+
+        .pade-vercomo .pade-input {
+            margin-top: 6px;
+            background: rgba(0,0,0,.2);
+            color: #fff;
+            border-color: rgba(255,255,255,.3);
+        }
+
+    /* main + topbar */
+    .pade-main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    .pade-topbar {
+        background: #fff;
+        padding: 16px 26px;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+        border-bottom: 1px solid var(--line);
+    }
+
+    .pade-pade {
+        font-size: 11px;
+        letter-spacing: 1.5px;
+        color: var(--wine);
+        font-weight: 700;
+    }
+
+    .pade-topbar-tit h1 {
+        font-size: 26px;
+        margin: 2px 0;
+    }
+
+    .pade-sub {
+        font-size: 13px;
+        color: var(--muted);
+    }
+
+    .pade-topbar-dir {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .pade-papel-toggle {
+        display: inline-flex;
+        background: #f4f1f2;
+        border-radius: 99px;
+        padding: 4px;
+    }
+
+    .pade-papel-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 0;
+        background: transparent;
+        cursor: pointer;
+        padding: 7px 14px;
+        border-radius: 99px;
+        font-size: 13px;
+        color: var(--muted);
+        font-weight: 600;
+    }
+
+        .pade-papel-btn.ativo {
+            background: var(--wine-grad);
+            color: #fff;
+        }
+
+    .pade-periodo {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 13px;
+    }
+
+    .pade-periodo-sel {
+        border: 0;
+        background: transparent;
+        font: inherit;
+        cursor: pointer;
+        outline: none;
+    }
+
+    .pade-ic-btn {
+        position: relative;
+        border: 1px solid var(--line);
+        background: #fff;
+        border-radius: 8px;
+        width: 36px;
+        height: 36px;
+        cursor: pointer;
+        font-size: 16px;
+    }
+
+    .pade-dot {
+        position: absolute;
+        top: 7px;
+        right: 9px;
+        width: 7px;
+        height: 7px;
+        background: var(--red);
+        border-radius: 50%;
+    }
+
+    .pade-user {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .pade-user-av {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: #d9d9de;
+        color: #5a5a63;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .pade-user-info {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.15;
+    }
+
+        .pade-user-info strong {
+            font-size: 12px;
+        }
+
+        .pade-user-info span {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+    .pade-conteudo {
+        padding: 22px 26px 40px;
+    }
+
+    /* genéricos */
+    .pade-card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 18px 20px;
+        margin-bottom: 16px;
+    }
+
+    .pade-card-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 4px;
+    }
+
+    .pade-card-tit {
+        font-size: 15px;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .pade-muted {
+        color: var(--muted);
+    }
+
+    .pade-muted-sm {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 2px 0 10px;
+    }
+
+    .pade-ink {
+        color: var(--ink);
+    }
+
+    .pade-wine {
+        color: var(--wine);
+        font-weight: 700;
+    }
+
+    .pade-mini {
+        font-size: 11px;
+        color: var(--muted);
+    }
+
+    .pade-link {
+        color: var(--wine);
+        font-weight: 600;
+        font-size: 13px;
+        text-decoration: none;
+    }
+
+    .pade-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        border-radius: 8px;
+        padding: 9px 16px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        border: 1px solid transparent;
+    }
+
+    .pade-btn-primario {
+        background: var(--red-grad);
+        color: #fff;
+    }
+
+    .pade-btn-outline {
+        background: #fff;
+        border-color: var(--line);
+        color: var(--ink);
+    }
+
+    .pade-btn-texto {
+        background: transparent;
+        color: var(--muted);
+    }
+
+    .pade-btn-full {
+        width: 100%;
+        margin-top: 12px;
+    }
+
+    .pade-badge {
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: .5px;
+        padding: 3px 8px;
+        border-radius: 5px;
+        background: var(--chip);
+        color: var(--wine);
+    }
+
+    .pade-badge-wine {
+        background: var(--wine);
+        color: #fff;
+    }
+
+    .pade-badge-ineleg {
+        background: #f3dde3;
+        color: #8b1a3f;
+    }
+
+    .pade-input {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 7px 9px;
+        font: inherit;
+        font-size: 13px;
+        background: #fff;
+        outline: none;
+        width: 100%;
+    }
+
+        .pade-input:focus {
+            border-color: var(--wine);
+        }
+
+    .pade-input-peso {
+        width: 56px;
+        text-align: center;
+    }
+
+    .pade-av {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 13px;
+        font-weight: 700;
+        color: #fff;
+        flex-shrink: 0;
+    }
+
+    .pade-av-sm {
+        width: 32px;
+        height: 32px;
+        font-size: 11px;
+    }
+
+    .pade-av-lg {
+        width: 72px;
+        height: 72px;
+        font-size: 24px;
+    }
+
+    .pade-dotc {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        vertical-align: middle;
+        margin-right: 4px;
+    }
+
+    /* banner */
+    .pade-banner {
+        background: var(--wine-grad);
+        color: #fff;
+        border-radius: 14px;
+        padding: 26px 28px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        margin-bottom: 16px;
+    }
+
+    .pade-banner-eyebrow {
+        font-size: 11px;
+        letter-spacing: 1.5px;
+        opacity: .85;
+        font-weight: 700;
+    }
+
+    .pade-banner-h {
+        font-size: 30px;
+        margin: 6px 0 8px;
+    }
+
+    .pade-banner-p {
+        font-size: 14px;
+        opacity: .92;
+        max-width: 720px;
+        line-height: 1.5;
+    }
+
+    .pade-banner-func {
+        gap: 24px;
+    }
+
+    .pade-banner-donut-lg svg {
+        width: 130px;
+        height: 130px;
+    }
+
+    .pade-trofeu {
+        text-align: center;
+        border: 1px solid rgba(255,255,255,.3);
+        border-radius: 12px;
+        padding: 16px 22px;
+    }
+
+        .pade-trofeu i {
+            font-size: 22px;
+        }
+
+        .pade-trofeu strong {
+            display: block;
+            font-size: 26px;
+        }
+
+        .pade-trofeu span {
+            font-size: 10px;
+            letter-spacing: .5px;
+            opacity: .85;
+        }
+
+    /* stats */
+    .pade-stats-4 {
+        display: grid;
+        grid-template-columns: repeat(4,1fr);
+        gap: 14px;
+        margin-bottom: 16px;
+    }
+
+    .pade-stats-3 {
+        display: grid;
+        grid-template-columns: repeat(3,1fr);
+        gap: 14px;
+        margin-bottom: 16px;
+    }
+
+    .pade-stats-5 {
+        display: grid;
+        grid-template-columns: repeat(5,1fr);
+        gap: 14px;
+        margin-bottom: 16px;
+    }
+
+    .pade-stat {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px 18px;
+    }
+
+    .pade-stat-red {
+        background: var(--wine-grad);
+        border-color: transparent;
+        color: #fff;
+    }
+
+    .pade-stat-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 11px;
+        letter-spacing: .5px;
+        color: var(--muted);
+        font-weight: 600;
+    }
+
+    .pade-stat-red .pade-stat-top {
+        color: rgba(255,255,255,.85);
+    }
+
+    .pade-stat strong {
+        font-size: 32px;
+        display: block;
+        margin-top: 6px;
+    }
+
+    .pade-stat small {
+        font-size: 11px;
+        color: var(--muted);
+    }
+
+    .pade-stat-red small {
+        color: rgba(255,255,255,.8);
+    }
+
+    .pade-mini-card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 13px;
+    }
+
+        .pade-mini-card > i:first-child {
+            font-size: 18px;
+            color: var(--wine);
+        }
+
+        .pade-mini-card strong {
+            display: block;
+        }
+
+        .pade-mini-card span {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+    .pade-chev {
+        margin-left: auto;
+        color: var(--muted);
+    }
+
+    .pade-2col {
+        display: grid;
+        grid-template-columns: 1.3fr 1fr;
+        gap: 16px;
+    }
+
+    /* notificações */
+    .pade-chip-novas {
+        font-size: 9px;
+        background: var(--red);
+        color: #fff;
+        padding: 2px 7px;
+        border-radius: 99px;
+    }
+
+    .pade-notif {
+        display: flex;
+        gap: 12px;
+        padding: 12px 0;
+        border-top: 1px solid var(--line);
+    }
+
+    .pade-notif-ic {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--chip);
+        color: var(--wine);
+        display: grid;
+        place-items: center;
+        flex-shrink: 0;
+    }
+
+    .pade-notif-txt {
+        flex: 1;
+    }
+
+        .pade-notif-txt strong {
+            display: block;
+            font-size: 13px;
+        }
+
+        .pade-notif-txt span {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+    .pade-notif-meta {
+        text-align: right;
+    }
+
+        .pade-notif-meta small {
+            display: block;
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+    /* composição */
+    .pade-comp {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+
+    .pade-comp-leg {
+        flex: 1;
+    }
+
+    .pade-leg-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        padding: 6px 0;
+    }
+
+        .pade-leg-row small {
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .pade-leg-row b {
+            margin-left: auto;
+        }
+
+    .pade-leg-total {
+        border-top: 1px solid var(--line);
+        margin-top: 4px;
+        padding-top: 10px;
+        font-weight: 600;
+    }
+
+    /* tabs */
+    .pade-tabs {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+    }
+
+    .pade-tab {
+        border: 0;
+        background: transparent;
+        padding: 9px 14px;
+        border-radius: 99px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--muted);
+    }
+
+        .pade-tab.ativo {
+            background: var(--wine-grad);
+            color: #fff;
+        }
+
+    .pade-tab-n {
+        background: rgba(0,0,0,.12);
+        padding: 1px 7px;
+        border-radius: 99px;
+        font-size: 11px;
+        margin-left: 4px;
+    }
+
+    .pade-tab.ativo .pade-tab-n {
+        background: rgba(255,255,255,.25);
+    }
+
+    .pade-tabs-dir {
+        margin-left: auto;
+        display: flex;
+        gap: 10px;
+    }
+
+    .pade-busca {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 6px 10px;
+        background: #fff;
+    }
+
+        .pade-busca input {
+            border: 0;
+            outline: none;
+            font: inherit;
+            font-size: 13px;
+        }
+
+    /* grid funcionários */
+    .pade-grid-func {
+        display: grid;
+        grid-template-columns: repeat(4,1fr);
+        gap: 14px;
+    }
+
+    .pade-func-card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px;
+    }
+
+    .pade-func-card-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+
+    .pade-func-card-nome {
+        flex: 1;
+    }
+
+        .pade-func-card-nome strong {
+            display: block;
+            font-size: 14px;
+        }
+
+        .pade-func-card-nome span {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+    .pade-func-card-body {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 12px;
+    }
+
+    .pade-barras {
+        flex: 1;
+    }
+
+    .pade-barra-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 2px;
+    }
+
+    .pade-barra {
+        height: 3px;
+        background: #efe3e7;
+        border-radius: 99px;
+        margin-bottom: 8px;
+        overflow: hidden;
+    }
+
+    .pade-barra-fill {
+        height: 100%;
+        background: var(--wine);
+    }
+
+    .pade-status-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 12px;
+        padding: 5px 0;
+    }
+
+        .pade-status-row small {
+            color: var(--muted);
+        }
+
+    .pade-status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+        .pade-status-pill.ok {
+            color: var(--green);
+        }
+
+        .pade-status-pill.no {
+            color: var(--wine);
+        }
+
+    /* contrato (reuso) */
+    .pade-func-bar {
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        gap: 20px;
+        align-items: center;
+        padding: 18px 4px;
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 16px;
+    }
+
+    .pade-func-bar-dados h2 {
+        font-size: 20px;
+        margin: 0 0 6px;
+    }
+
+    .pade-func-bar-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 24px;
+        font-size: 13px;
+    }
+
+    .pade-btn-licenca {
+        margin-top: 10px;
+        border: 1px solid var(--line);
+        background: #fff;
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-size: 12px;
+        cursor: pointer;
+    }
+
+    .pade-func-bar-acoes {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 170px;
+    }
+
+    .pade-tri-cards {
+        display: grid;
+        grid-template-columns: repeat(5,1fr);
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .pade-tri-card {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px 14px;
+    }
+
+        .pade-tri-card.ativo, .pade-tri-card.final {
+            background: var(--wine-grad);
+            border-color: transparent;
+            color: #fff;
+        }
+
+    .pade-tri-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 600;
+        margin-bottom: 6px;
+    }
+
+    .pade-tri-card.ativo .pade-tri-top, .pade-tri-card.final .pade-tri-top {
+        color: rgba(255,255,255,.85);
+    }
+
+    .pade-tri-card strong {
+        font-size: 22px;
+    }
+
+    .pade-tri-badge {
+        font-size: 8px;
+        background: rgba(255,255,255,.22);
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
+
+        .pade-tri-badge.wine {
+            background: var(--chip);
+            color: var(--wine);
+        }
+
+    .pade-pesos {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        justify-content: space-between;
+        background: var(--soft);
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-bottom: 16px;
+    }
+
+    .pade-pesos-info {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex: 1;
+    }
+
+    .pade-pesos-tit {
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .pade-pesos-track {
+        flex: 1;
+        height: 7px;
+        background: #ecdfe3;
+        border-radius: 99px;
+        overflow: hidden;
+        min-width: 100px;
+    }
+
+    .pade-pesos-fill {
+        height: 100%;
+    }
+
+        .pade-pesos-fill.ok {
+            background: var(--green);
+        }
+
+        .pade-pesos-fill.warn {
+            background: var(--wine);
+        }
+
+    .pade-pesos-val {
+        font-size: 14px;
+        font-weight: 700;
+    }
+
+        .pade-pesos-val.ok {
+            color: var(--green);
+        }
+
+        .pade-pesos-val.warn {
+            color: var(--wine);
+        }
+
+        .pade-pesos-val small {
+            font-weight: 400;
+            color: var(--muted);
+        }
+
+    .pade-pesos-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 8px 14px;
+        border-radius: 8px;
+        white-space: nowrap;
+    }
+
+        .pade-pesos-status.status-ok {
+            background: var(--green-bg);
+            color: var(--green);
+        }
+
+        .pade-pesos-status.status-warn {
+            background: var(--chip);
+            color: var(--wine);
+        }
+
+    .pade-bloco {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        margin-bottom: 14px;
+        overflow: hidden;
+    }
+
+    .pade-bloco-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 16px;
+    }
+
+    .pade-chevron {
+        border: 0;
+        background: transparent;
+        cursor: pointer;
+        color: var(--muted);
+        padding: 4px;
+    }
+
+    .pade-bloco-barra {
+        width: 4px;
+        height: 30px;
+        background: var(--wine);
+        border-radius: 4px;
+        flex-shrink: 0;
+    }
+
+    .pade-bloco-tit {
+        flex: 1;
+    }
+
+        .pade-bloco-tit strong {
+            display: block;
+            font-size: 15px;
+        }
+
+        .pade-bloco-tit span {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+    .pade-bloco-peso {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--muted);
+    }
+
+        .pade-bloco-peso label {
+            font-weight: 600;
+        }
+
+    .pade-bloco-nota {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+    }
+
+        .pade-bloco-nota span {
+            font-size: 10px;
+            color: var(--muted);
+        }
+
+        .pade-bloco-nota strong {
+            font-size: 17px;
+            color: var(--wine);
+        }
+
+    .pade-lix {
+        border: 0;
+        background: transparent;
+        cursor: pointer;
+        color: var(--muted);
+        padding: 6px;
+    }
+
+    .pade-tab-wrap {
+        padding: 0 16px 4px;
+        overflow-x: auto;
+    }
+
+    .pade-tabela {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+        .pade-tabela th {
+            font-size: 10px;
+            letter-spacing: .4px;
+            color: var(--muted);
+            font-weight: 600;
+            padding: 8px 6px;
+            text-align: center;
+        }
+
+    .pade-th-grp {
+        border-left: 1px solid var(--line);
+    }
+
+    .pade-col-ind {
+        text-align: left !important;
+        min-width: 200px;
+    }
+
+    .pade-tabela tbody td {
+        padding: 9px 6px;
+        border-top: 1px solid var(--line);
+        vertical-align: middle;
+        text-align: center;
+    }
+
+        .pade-tabela tbody td.pade-col-ind {
+            text-align: left;
+        }
+
+    .pade-num-li {
+        display: inline-block;
+        width: 18px;
+        color: var(--muted);
+        font-size: 12px;
+    }
+
+    .pade-input-txt {
+    }
+
+    .pade-cel-num {
+    }
+
+    .pade-suf {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+        .pade-suf .pade-input {
+            width: 62px;
+            text-align: center;
+        }
+
+        .pade-suf span {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+    .pade-rem-ind {
+        border: 0;
+        background: transparent;
+        cursor: pointer;
+        color: var(--muted);
+        padding: 4px;
+    }
+
+    .pade-soma td {
+        border-top: 2px solid var(--line);
+    }
+
+    .pade-soma .pade-col-ind {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+    }
+
+    .pade-pill-soma {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 6px;
+    }
+
+        .pade-pill-soma.ok {
+            background: var(--green-bg);
+            color: var(--green);
+        }
+
+        .pade-pill-soma.warn {
+            background: var(--chip);
+            color: var(--wine);
+        }
+
+    .pade-add-link {
+        border: 0;
+        background: transparent;
+        color: var(--wine);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 12px 16px;
+    }
+
+    .pade-add-bloco {
+        width: 100%;
+        border: 1.5px dashed #e3c9d1;
+        background: #fff;
+        color: var(--wine);
+        border-radius: 12px;
+        padding: 16px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    /* áreas */
+    .pade-info-banner {
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 18px 20px;
+        margin-bottom: 16px;
+    }
+
+    .pade-info-ic {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        background: var(--wine);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        font-size: 20px;
+        flex-shrink: 0;
+    }
+
+    .pade-info-banner p {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 4px 0 0;
+        line-height: 1.5;
+    }
+
+    .pade-info-banner strong {
+        font-size: 15px;
+    }
+
+    .pade-fonte {
+        margin-left: auto;
+        align-self: flex-start;
+        background: var(--wine);
+        color: #fff;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 5px 12px;
+        border-radius: 99px;
+        white-space: nowrap;
+    }
+
+    .pade-areas-head {
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        gap: 20px;
+        align-items: center;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 16px;
+    }
+
+    .pade-areas-head-nome h2 {
+        margin: 0;
+        font-size: 20px;
+    }
+
+    .pade-areas-head-nome span {
+        color: var(--muted);
+        font-size: 13px;
+    }
+
+    .pade-areas-head-stats {
+        display: grid;
+        gap: 4px;
+        font-size: 13px;
+        min-width: 260px;
+    }
+
+        .pade-areas-head-stats > div {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .pade-areas-head-stats span {
+            color: var(--muted);
+        }
+
+        .pade-areas-head-stats b {
+            color: var(--wine);
+        }
+
+    .pade-chips {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+    }
+
+    .pade-chips-lbl {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: .5px;
+    }
+
+    .pade-chip {
+        border: 1px solid var(--line);
+        background: #fff;
+        border-radius: 99px;
+        padding: 7px 16px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        color: var(--muted);
+    }
+
+        .pade-chip.ativo {
+            background: var(--wine);
+            color: #fff;
+            border-color: transparent;
+        }
+
+    .pade-pill-final {
+        background: var(--chip);
+        color: var(--wine);
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 13px;
+    }
+
+    .pade-media-tri td {
+        font-weight: 700;
+        background: var(--soft);
+    }
+
+    .pade-result-final td {
+        border-top: 2px solid var(--line);
+        font-size: 13px;
+    }
+
+    /* histórico */
+    .pade-hist-banner {
+        background: var(--wine-grad);
+        color: #fff;
+        border-radius: 14px;
+        padding: 24px 26px;
+        display: flex;
+        gap: 18px;
+        align-items: flex-start;
+        margin-bottom: 16px;
+    }
+
+    .pade-hist-ic {
+        width: 56px;
+        height: 56px;
+        border-radius: 12px;
+        background: rgba(255,255,255,.18);
+        display: grid;
+        place-items: center;
+        font-size: 26px;
+        flex-shrink: 0;
+    }
+
+    .pade-hist-banner h2 {
+        margin: 4px 0 6px;
+        font-size: 24px;
+    }
+
+    .pade-hist-banner p {
+        font-size: 13px;
+        opacity: .9;
+        max-width: 760px;
+        line-height: 1.5;
+    }
+
+    .pade-tabela-hist .pade-col-ind, .pade-tabela-rank .pade-col-ind {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .pade-hist-nome strong {
+        display: block;
+        font-size: 13px;
+    }
+
+    .pade-hist-nome span {
+        font-size: 11px;
+        color: var(--muted);
+    }
+
+    .pade-vit {
+        background: var(--chip);
+        color: var(--wine);
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 99px;
+        font-size: 12px;
+    }
+
+    .pade-pos {
+        font-size: 12px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 6px;
+        background: #eee;
+        color: #555;
+    }
+
+        .pade-pos.ouro {
+            background: #fdecc8;
+            color: #a86a00;
+        }
+
+        .pade-pos.bronze {
+            background: #f0ddd0;
+            color: #9a5b32;
+        }
+
+    .pade-pos-nota {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 2px;
+    }
+
+    .pade-secao-lbl {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: .5px;
+        color: var(--muted);
+        margin: 8px 0;
+    }
+
+    .pade-conq-card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+        .pade-conq-card strong {
+            display: block;
+            font-size: 13px;
+        }
+
+        .pade-conq-card span {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .pade-conq-card small {
+            display: block;
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 4px;
+        }
+
+        .pade-conq-card .pade-badge {
+            margin-left: auto;
+        }
+
+    /* funcionário */
+    .pade-grupo {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+    }
+
+    .pade-grupo-txt {
+        flex: 1;
+    }
+
+        .pade-grupo-txt h3 {
+            margin: 4px 0;
+            font-size: 20px;
+        }
+
+        .pade-grupo-txt p {
+            font-size: 13px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+    .pade-grupo-notas {
+        display: flex;
+        gap: 12px;
+    }
+
+    .pade-nota-box {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px 18px;
+        text-align: center;
+    }
+
+        .pade-nota-box.wine {
+            background: var(--wine);
+            color: #fff;
+            border-color: transparent;
+        }
+
+        .pade-nota-box span {
+            font-size: 10px;
+            letter-spacing: .5px;
+            display: block;
+        }
+
+        .pade-nota-box b {
+            font-size: 20px;
+        }
+
+    .pade-ind-val {
+        font-size: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+    }
+
+        .pade-ind-val b {
+            font-size: 26px;
+            color: var(--ink);
+        }
+
+    .pade-ind-bar {
+        height: 3px;
+        background: var(--wine);
+        border-radius: 99px;
+        margin: 8px 0;
+    }
+
+    .pade-ind-calc {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--muted);
+    }
+
+        .pade-ind-calc b {
+            color: var(--ink);
+        }
+
+    .pade-evo {
+        display: grid;
+        grid-template-columns: repeat(4,1fr);
+        gap: 12px;
+    }
+
+    .pade-evo-card {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px;
+    }
+
+        .pade-evo-card strong {
+            font-size: 24px;
+        }
+
+    .pade-evo-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+
+    .pade-aguard {
+        font-size: 9px;
+        color: var(--muted);
+    }
+
+    .pade-ro-bloco {
+        margin-bottom: 18px;
+    }
+
+    .pade-ro-bloco-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+        .pade-ro-bloco-head strong {
+            font-size: 14px;
+        }
+
+    .pade-ro-peso {
+        margin-left: auto;
+        font-size: 12px;
+        color: var(--muted);
+    }
+
+    .pade-tabela-ro td, .pade-tabela-ro th {
+        font-size: 12px;
+    }
+
+    .pade-ro-peso-cel {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+
+    .pade-ro-nota-cel {
+        background: var(--chip);
+        border-radius: 6px;
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+
+    .pade-rodape-nota {
+        font-size: 12px;
+        color: var(--muted);
+        text-align: center;
+        margin-top: 12px;
+    }
+
+    /* admin */
+    .pade-filtros {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+    }
+
+    .pade-filtros-lbl {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+    }
+
+    .pade-filtros .pade-input {
+        width: auto;
+        min-width: 140px;
+    }
+
+    .pade-filtros-dir {
+        margin-left: auto;
+        display: flex;
+        gap: 8px;
+    }
+
+    .pade-grupo-rank {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px 18px;
+        margin-bottom: 16px;
+    }
+
+    .pade-grupo-rank-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+    }
+
+        .pade-grupo-rank-head strong {
+            font-size: 15px;
+        }
+
+    .pade-chip-cinza {
+        font-size: 11px;
+        background: var(--chip);
+        color: var(--wine);
+        padding: 3px 10px;
+        border-radius: 99px;
+    }
+
+    .pade-grupo-acum {
+        margin-left: auto;
+    }
+
+    .pade-tabela-rank tbody td {
+        border-top: 1px solid var(--line);
+    }
+
+    .pade-pos-num {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        display: inline-grid;
+        place-items: center;
+        background: #eee;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+        .pade-pos-num.ouro {
+            background: #fdecc8;
+            color: #a86a00;
+        }
+
+        .pade-pos-num.ne {
+            background: #f3dde3;
+            color: #8b1a3f;
+            font-size: 9px;
+        }
+
+    .pade-rank-badge {
+        background: var(--wine);
+        color: #fff;
+        font-weight: 700;
+        padding: 5px 14px;
+        border-radius: 7px;
+        font-size: 13px;
+    }
+
+    .pade-ineleg td {
+        opacity: .75;
+    }
+
+    @@media (max-width: 1100px) {
+        .pade-2col, .pade-stats-4, .pade-stats-5, .pade-stats-3, .pade-grid-func, .pade-tri-cards, .pade-evo {
+            grid-template-columns: repeat(2,1fr);
+        }
+
+        .pade-areas-head, .pade-func-bar {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @@media (max-width: 720px) {
+        .pade-side {
+            display: none;
+        }
+
+        .pade-2col, .pade-stats-4, .pade-stats-5, .pade-stats-3, .pade-grid-func, .pade-tri-cards, .pade-evo {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+@code {
+    private static readonly CultureInfo _pt = new("pt-BR");
+    private static readonly CultureInfo _inv = CultureInfo.InvariantCulture;
+
+    private string Fmt2(decimal v) => v.ToString("N2", _pt);
+    private string Fmt1(decimal v) => v.ToString("N1", _pt);
+    private string Fmt0(decimal v) => v.ToString("N0", _pt);
+    private string FmtNum(decimal v) => v == Math.Truncate(v) ? v.ToString("N0", _pt) : v.ToString("N2", _pt);
+
+    // ===================== Enums / estado =====================
+    private enum Papel { Gestor, Funcionario, Admin }
+    private Papel _papel = Papel.Gestor;
+    private string _rota = "g-inicio";
+    private int _trimApuracao = 0;
+    private string _funcSelecionadoId = "F1";
+    private string _areaFuncId = "F1";
+    private string _equipeFiltro = "todos";
+    private string _equipeBusca = "";
+    private string _adminTab = "rank";
+
+    private void TrocarPapel(Papel p)
+    {
+        _papel = p;
+        switch (p)
+        {
+            case Papel.Gestor:
+                _rota = "g-inicio";
+                break;
+            case Papel.Funcionario:
+                _rota = "f-performance";
+                break;
+            case Papel.Admin:
+                _rota = "a-apuracao";
+                break;
+            default:
+                _rota = "g-inicio";
+                break;
+        }
+    }
+
+    private void OnTrocarPeriodo(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int idx)) { _trimApuracao = idx; }
+    }
+
+    private void IrParaContrato(Funcionario f) { _rota = "g-contrato"; }
+
+    private void AdicionarBlocoNovo(Funcionario f)
+    {
+        f.Blocos!.Add(new Bloco { Nome = "Novo bloco", PesoBloco = 0m, Indicadores = new() { new Indicador() } });
+    }
+
+    // ===================== Nav / labels =====================
+    private record NavItem(string Rota, string Titulo, string Icone);
+
+    private List<NavItem> NavDoPapel()
+    {
+        var lista = new List<NavItem>();
+        switch (_papel)
+        {
+            case Papel.Gestor:
+                lista.Add(new("g-inicio", "Home", "bi-house"));
+                lista.Add(new("g-equipe", "Equipe", "bi-people"));
+                lista.Add(new("g-contrato", "Contrato de Metas", "bi-bullseye"));
+                lista.Add(new("g-areas", "Áreas Atendidas", "bi-globe"));
+                lista.Add(new("g-historico", "Histórico", "bi-trophy"));
+                break;
+            case Papel.Funcionario:
+                lista.Add(new("f-performance", "Minha performance", "bi-house"));
+                break;
+            case Papel.Admin:
+                lista.Add(new("a-apuracao", "Apuração PADE", "bi-house"));
+                break;
+            default:
+                break;
+        }
+        return lista;
+    }
+
+    private string NomePapel(Papel p)
+    {
+        string nome;
+        switch (p)
+        {
+            case Papel.Gestor: nome = "Gestor"; break;
+            case Papel.Funcionario: nome = "Funcionário"; break;
+            case Papel.Admin: nome = "Admin"; break;
+            default: nome = p.ToString(); break;
+        }
+        return nome;
+    }
+
+    private string IconePapel(Papel p)
+    {
+        string ic;
+        switch (p)
+        {
+            case Papel.Gestor: ic = "bi-people"; break;
+            case Papel.Funcionario: ic = "bi-person"; break;
+            case Papel.Admin: ic = "bi-gear"; break;
+            default: ic = "bi-person"; break;
+        }
+        return ic;
+    }
+
+    private string UsuarioAvatar()
+    {
+        string a;
+        switch (_papel)
+        {
+            case Papel.Gestor: a = "GA"; break;
+            case Papel.Funcionario: a = "F1"; break;
+            case Papel.Admin: a = "AP"; break;
+            default: a = "GA"; break;
+        }
+        return a;
+    }
+
+    private string UsuarioNome()
+    {
+        string n;
+        switch (_papel)
+        {
+            case Papel.Gestor: n = "GESTOR(A)"; break;
+            case Papel.Funcionario: n = "FUNCIONÁRIO 1"; break;
+            case Papel.Admin: n = "ADMIN PADE"; break;
+            default: n = ""; break;
+        }
+        return n;
+    }
+
+    private string UsuarioPapelLabel()
+    {
+        string l;
+        switch (_papel)
+        {
+            case Papel.Gestor: l = "GESTORA"; break;
+            case Papel.Funcionario: l = "FUNCIONÁRIO"; break;
+            case Papel.Admin: l = "ADMIN"; break;
+            default: l = ""; break;
+        }
+        return l;
+    }
+
+    private string UsuarioDescricao()
+    {
+        string d;
+        switch (_papel)
+        {
+            case Papel.Gestor: d = "Gestora · Campanhas & Incentivos"; break;
+            case Papel.Funcionario: d = "Analista Financeiro Pl."; break;
+            case Papel.Admin: d = "Apuração do programa"; break;
+            default: d = ""; break;
+        }
+        return d;
+    }
+
+    private string TituloPagina()
+    {
+        string t;
+        switch (_rota)
+        {
+            case "g-inicio": t = "Início"; break;
+            case "g-equipe": t = "Equipe"; break;
+            case "g-contrato": t = "Contrato de Metas"; break;
+            case "g-areas": t = "Áreas Atendidas"; break;
+            case "g-historico": t = "Histórico"; break;
+            case "f-performance": t = "Minha performance"; break;
+            case "a-apuracao": t = "Apuração do PADE"; break;
+            default: t = ""; break;
+        }
+        return t;
+    }
+
+    private string SubtituloPagina()
+    {
+        string s;
+        switch (_rota)
+        {
+            case "g-inicio": s = "Painel da gestão"; break;
+            case "g-equipe": s = "Status das avaliações"; break;
+            case "g-contrato": s = "70% da nota PADE · 4 trimestres"; break;
+            case "g-areas": s = "30% da nota PADE · atualização automática"; break;
+            case "g-historico": s = "Premiações dos seus funcionários"; break;
+            case "f-performance": s = "Acompanhe a sua nota PADE"; break;
+            case "a-apuracao": s = "Ranking, aprovação e comparativo entre grupos"; break;
+            default: s = ""; break;
+        }
+        return s;
+    }
+
+    // ===================== Equipe (tabs/filtros) =====================
+    private record TabInfo(string Key, string Label, int Count);
+
+    private List<TabInfo> EquipeTabs() => new()
+    {
+        new("todos", "Todos", 8),
+        new("pendentes", "Pendentes", 0),
+        new("naoiniciados", "Não iniciados", 2),
+        new("concluidos", "Concluídos", 6),
+        new("licenca", "Em licença", 1)
+    };
+
+    private IEnumerable<Funcionario> EquipeFiltrada()
+    {
+        IEnumerable<Funcionario> q = PadeMock.Funcionarios;
+        switch (_equipeFiltro)
+        {
+            case "naoiniciados": q = q.Where(f => f.StatusContrato == "NAO_INICIADO"); break;
+            case "concluidos": q = q.Where(f => f.StatusContrato == "CONCLUIDO"); break;
+            case "licenca": q = q.Where(f => f.EmLicenca); break;
+            case "pendentes": q = q.Where(f => false); break;
+            default: break;
+        }
+        if (!string.IsNullOrWhiteSpace(_equipeBusca))
+        {
+            q = q.Where(f => f.Nome.Contains(_equipeBusca, StringComparison.OrdinalIgnoreCase));
+        }
+        return q;
+    }
+
+    private (string Texto, string Classe)? BadgeEquipe(Funcionario f)
+    {
+        if (f.Inelegivel) { return ("INELEGÍVEL", "pade-badge-ineleg"); }
+        if (f.EmLicenca) { return ("LICENÇA", ""); }
+        if (f.DesagioPts > 0) { return ($"-{f.DesagioPts:0} PTS", ""); }
+        return null;
+    }
+
+    private string StatusPill(string status)
+    {
+        string txt; string cls; string ic;
+        switch (status)
+        {
+            case "CONCLUIDO": txt = "CONCLUÍDO"; cls = "ok"; ic = "bi-check-circle-fill"; break;
+            case "NAO_INICIADO": txt = "NÃO INICIADO"; cls = "no"; ic = "bi-circle"; break;
+            default: txt = status; cls = "no"; ic = "bi-circle"; break;
+        }
+        return $"<span class=\"pade-status-pill {cls}\"><i class=\"bi {ic}\"></i> {txt}</span>";
+    }
+
+    // ===================== Cálculos =====================
+    private decimal NotaBlocoTri(Bloco b, int t)
+    {
+        decimal s = 0m;
+        foreach (var i in b.Indicadores) { s += i.Tri[t].Peso * i.Tri[t].Nota; }
+        return Math.Round(s / 100m, 2);
+    }
+
+    private decimal NotaContratoTri(Funcionario f, int t)
+    {
+        if (f.Blocos is null) { return f.NotaContratoStored ?? 0m; }
+        decimal pond = 0m, pesos = 0m;
+        foreach (var b in f.Blocos) { pond += NotaBlocoTri(b, t) * b.PesoBloco; pesos += b.PesoBloco; }
+        return pesos == 0m ? 0m : Math.Round(pond / pesos, 2);
+    }
+
+    private decimal NotaContrato(Funcionario f)
+    {
+        if (f.Blocos is null) { return f.NotaContratoStored ?? 0m; }
+        decimal s = 0m;
+        for (int t = 0; t < 4; t++) { s += NotaContratoTri(f, t); }
+        return Math.Round(s / 4m, 2);
+    }
+
+    private decimal? ResultFinalAreaNullable(AreaResultado a)
+    {
+        decimal? ultimo = null;
+        for (int t = 0; t < 4; t++) { if (a.Tri[t].HasValue) { ultimo = a.Tri[t]; } }
+        return ultimo;
+    }
+    private decimal ResultFinalArea(AreaResultado a) => ResultFinalAreaNullable(a) ?? 0m;
+
+    private decimal? MediaAreasTri(Funcionario f, int t)
+    {
+        if (f.Areas is null) { return null; }
+        var vals = f.Areas.Where(a => a.Tri[t].HasValue).Select(a => a.Tri[t]!.Value).ToList();
+        if (vals.Count == 0) { return null; }
+        return Math.Round(vals.Average(), 1);
+    }
+
+    private decimal NotaAreas(Funcionario f)
+    {
+        if (f.Areas is null) { return f.NotaAreasStored ?? 0m; }
+        var finais = f.Areas.Select(ResultFinalArea).Where(v => v > 0m).ToList();
+        return finais.Count == 0 ? 0m : Math.Round(finais.Average(), 2);
+    }
+
+    private decimal NotaPade(Funcionario f) => Math.Round(NotaContrato(f) * 0.70m + NotaAreas(f) * 0.30m, 2);
+
+    private decimal? Ranking(Funcionario f) => f.Inelegivel ? null : Math.Round(NotaPade(f) - f.DesagioPts, 2);
+
+    private decimal SomaPesosBlocos(Funcionario f) { decimal s = 0m; foreach (var b in f.Blocos!) { s += b.PesoBloco; } return s; }
+    private decimal SomaPesosInd(Bloco b, int t) { decimal s = 0m; foreach (var i in b.Indicadores) { s += i.Tri[t].Peso; } return s; }
+    private bool TodosPesosTriOk(Bloco b) { for (int t = 0; t < 4; t++) { if (SomaPesosInd(b, t) != 100m) { return false; } } return true; }
+
+    // ===================== Componentes visuais (SVG) =====================
+    private string DonutSimples(string numero, string label, double frac, string corFg, string corBg, int tamanho = 108)
+    {
+        double raio = 52, circ = 2 * Math.PI * raio, traco = circ * Math.Clamp(frac, 0, 1);
+        string dash = $"{traco.ToString(_inv)} {(circ - traco).ToString(_inv)}";
+        string txtNum = string.IsNullOrEmpty(numero) ? "" : $"<text x='60' y='58' text-anchor='middle' style='fill:{corFg};font-size:20px;font-weight:700'>{numero}</text>";
+        string txtLbl = string.IsNullOrEmpty(label) ? "" : $"<text x='60' y='76' text-anchor='middle' style='fill:{corFg};opacity:.7;font-size:8px;letter-spacing:1px'>{label}</text>";
+        return $"<svg viewBox='0 0 120 120' style='width:{tamanho}px;height:{tamanho}px'>" +
+               $"<circle cx='60' cy='60' r='52' style='fill:none;stroke:{corBg};stroke-width:11'/>" +
+               $"<circle cx='60' cy='60' r='52' style='fill:none;stroke:{corFg};stroke-width:11;stroke-linecap:round' stroke-dasharray='{dash}' transform='rotate(-90 60 60)'/>" +
+               txtNum + txtLbl + "</svg>";
+    }
+
+    private string GraficoLinha(double[] valores, string[] rotulos)
+    {
+        double w = 760, h = 220, padL = 40, padB = 30, padT = 20, padR = 20;
+        double maxV = 130, minV = 50;
+        double plotW = w - padL - padR, plotH = h - padT - padB;
+        int n = 4;
+        var pts = new List<string>();
+        var circ = new System.Text.StringBuilder();
+        var labs = new System.Text.StringBuilder();
+        for (int i = 0; i < n; i++)
+        {
+            double x = padL + plotW * i / (n - 1);
+            labs.Append($"<text x='{x.ToString(_inv)}' y='{(h - 6).ToString(_inv)}' text-anchor='middle' style='fill:#6b7280;font-size:11px'>{rotulos[i]}</text>");
+            if (i < valores.Length)
+            {
+                double y = padT + plotH * (1 - (valores[i] - minV) / (maxV - minV));
+                pts.Add($"{x.ToString(_inv)},{y.ToString(_inv)}");
+                circ.Append($"<circle cx='{x.ToString(_inv)}' cy='{y.ToString(_inv)}' r='5' style='fill:#fff;stroke:#8b1a3f;stroke-width:2'/>");
+                circ.Append($"<text x='{x.ToString(_inv)}' y='{(y - 12).ToString(_inv)}' text-anchor='middle' style='fill:#8b1a3f;font-size:11px;font-weight:700'>{valores[i].ToString("N1", _pt)}%</text>");
+            }
+        }
+        var grid = new System.Text.StringBuilder();
+        foreach (var gv in new[] { 130, 100, 50 })
+        {
+            double y = padT + plotH * (1 - (gv - minV) / (maxV - minV));
+            grid.Append($"<line x1='{padL}' y1='{y.ToString(_inv)}' x2='{(w - padR).ToString(_inv)}' y2='{y.ToString(_inv)}' style='stroke:#eee;stroke-dasharray:3 3'/>");
+            grid.Append($"<text x='{(w - padR + 4).ToString(_inv)}' y='{(y + 3).ToString(_inv)}' style='fill:#9ca3af;font-size:10px'>{gv}%</text>");
+        }
+        return $"<svg viewBox='0 0 {w.ToString(_inv)} {h.ToString(_inv)}' style='width:100%;height:auto'>{grid}<polyline points='{string.Join(" ", pts)}' style='fill:none;stroke:#8b1a3f;stroke-width:2'/>{circ}{labs}</svg>";
+    }
+
+    // ===================== Modelos =====================
+    private class TriValor { public decimal Peso { get; set; } public decimal Nota { get; set; } }
+    private class Indicador { public string Descricao { get; set; } = ""; public TriValor[] Tri { get; set; } = { new(), new(), new(), new() }; }
+    private class Bloco { public string Nome { get; set; } = ""; public decimal PesoBloco { get; set; } public bool Expandido { get; set; } = true; public List<Indicador> Indicadores { get; set; } = new(); }
+    private class AreaResultado { public string Nome { get; set; } = ""; public string Sigla { get; set; } = ""; public string Cor { get; set; } = "#8b1a3f"; public decimal Distribuicao { get; set; } public decimal?[] Tri { get; set; } = new decimal?[4]; }
+    private class HistoricoAno { public int Ano { get; set; } public int? Posicao { get; set; } public decimal Nota { get; set; } }
+    private class Notificacao { public string Icone { get; set; } = ""; public string Titulo { get; set; } = ""; public string Descricao { get; set; } = ""; public string Acao { get; set; } = ""; public string Quando { get; set; } = ""; }
+
+    private class Funcionario
+    {
+        public string Id { get; set; } = "";
+        public string Nome { get; set; } = "";
+        public string Cargo { get; set; } = "";
+        public string Grupo { get; set; } = "";
+        public string Admissao { get; set; } = "20/04/2025";
+        public string AreaGerencial { get; set; } = "Campanhas & Incentivos";
+        public string CorAvatar { get; set; } = "#c2547a";
+        public string StatusContrato { get; set; } = "CONCLUIDO";
+        public bool EmLicenca { get; set; }
+        public bool Inelegivel { get; set; }
+        public decimal DesagioPts { get; set; }
+        public int Vitorias { get; set; }
+        public decimal? NotaContratoStored { get; set; }
+        public decimal? NotaAreasStored { get; set; }
+        public List<Bloco>? Blocos { get; set; }
+        public List<AreaResultado>? Areas { get; set; }
+        public List<HistoricoAno> Historico { get; set; } = new();
+    }
+
+    // ===================== Mock =====================
+    private static class PadeMock
+    {
+        public static readonly List<string> Grupos = new() { "Pleno-1", "Sênior-1", "Junior-1" };
+        public static List<Funcionario> Funcionarios { get; } = Construir();
+        public static Funcionario F1 => Funcionarios[0];
+        public static Funcionario PorId(string id) => Funcionarios.FirstOrDefault(f => f.Id == id) ?? F1;
+
+        public static readonly List<Notificacao> Notificacoes = new()
+        {
+            new() { Icone = "bi-exclamation-circle", Titulo = "Avaliação devolvida pela administração", Descricao = "O contrato de metas de Funcionário 2 foi devolvido. Motivo: peso do bloco BAU acima do padrão para o cargo.", Acao = "Revisar", Quando = "há 2 horas" },
+            new() { Icone = "bi-plus-circle", Titulo = "Novo funcionário na sua equipe", Descricao = "Funcionário 8 foi adicionado à sua hierarquia. Cadastre o contrato de metas.", Acao = "Cadastrar", Quando = "há 1 dia" },
+            new() { Icone = "bi-arrow-down-circle", Titulo = "Funcionário movido", Descricao = "Funcionário 7 foi transferida para outra superintendência. Encerre as avaliações pendentes.", Acao = "Encerrar", Quando = "há 3 dias" },
+            new() { Icone = "bi-info-circle", Titulo = "Indicador fora do padrão", Descricao = "O peso do indicador \"Migração do painel\" no contrato de Funcionário 1 está acima da média do grupo Pleno-1.", Acao = "Visualizar", Quando = "há 4 dias" }
+        };
+
+        private static List<HistoricoAno> Hist(params (int ano, int? pos, decimal nota)[] itens)
+            => itens.Select(i => new HistoricoAno { Ano = i.ano, Posicao = i.pos, Nota = i.nota }).ToList();
+
+        private static List<Funcionario> Construir()
+        {
+            var f1 = new Funcionario
+            {
+                Id = "F1",
+                Nome = "FUNCIONÁRIO 1",
+                Cargo = "Analista Financeiro Pl.",
+                Grupo = "Pleno-1",
+                CorAvatar = "#e08aa6",
+                StatusContrato = "CONCLUIDO",
+                Vitorias = 2,
+                Historico = Hist((2022, 1, 130), (2023, 3, 130), (2024, 8, 130), (2025, 5, 130)),
+                Blocos = new()
+                {
+                    new Bloco { Nome = "BAU — Atividades Rotina", PesoBloco = 35m, Indicadores = new()
+                    {
+                        Ind("Atendimento de chamados de incentivos", (50,115),(50,120),(50,122),(50,130)),
+                        Ind("Conciliação mensal de premiações", (50,110),(50,118),(50,120),(50,130))
+                    } },
+                    new Bloco { Nome = "AD HOC — Atividades Esporádicas", PesoBloco = 20m, Indicadores = new()
+                    {
+                        Ind("Suporte à campanha trimestral", (100,105),(100,115),(100,120),(100,130))
+                    } },
+                    new Bloco { Nome = "Indicador da Área", PesoBloco = 15m, Indicadores = new()
+                    {
+                        Ind("NPS interno da área", (100,110),(100,115),(100,118),(100,130))
+                    } },
+                    new Bloco { Nome = "Projetos", PesoBloco = 30m, Indicadores = new()
+                    {
+                        Ind("Migração do painel para Power Apps", (60,108),(60,112),(60,120),(60,130)),
+                        Ind("Automação do reporte trimestral", (40,112),(40,116),(40,122),(40,130))
+                    } }
+                },
+                Areas = new()
+                {
+                    Area("Corporate", "C", "#8b1a3f", 20m, 115,118,120),
+                    Area("Large", "L", "#a32348", 60m, 122,124,128),
+                    Area("Ultra", "U", "#c2547a", 20m, 110,112,115)
+                }
+            };
+
+            var f2 = Resumo("F2", "FUNCIONÁRIO 2", "Analista Financeiro Sr.", "Sênior-1", "#8a9ad4", 117.31m, 123.33m, "CONCLUIDO");
+            f2.Historico = Hist((2022, 7, 90), (2023, 3, 130), (2024, 8, 130), (2025, 5, 130));
+            var f3 = Resumo("F3", "FUNCIONÁRIO 3", "Analista Financeiro Pl.", "Pleno-1", "#e0a060", 0m, 107.50m, "NAO_INICIADO");
+            f3.Inelegivel = true;
+            f3.Historico = Hist((2022, 3, 130), (2023, 3, 130), (2024, 8, 130), (2025, 5, 130));
+            var f4 = Resumo("F4", "FUNCIONÁRIO 4", "Analista Financeiro Sr.", "Sênior-1", "#a98ad4", 119.50m, 123.00m, "CONCLUIDO");
+            f4.Vitorias = 1;
+            f4.Historico = Hist((2022, 9, 130), (2023, 3, 130), (2024, 1, 130), (2025, 5, 130));
+            var f5 = Resumo("F5", "FUNCIONÁRIO 5", "Analista Financeiro Jr.", "Junior-1", "#7bbf8a", 105.00m, 95.00m, "CONCLUIDO");
+            f5.EmLicenca = true;
+            f5.Historico = Hist((2022, 13, 98), (2023, 17, 80), (2024, 12, 98), (2025, 9, 100));
+            var f6 = Resumo("F6", "FUNCIONÁRIO 6", "Analista Financeiro Pl.", "Pleno-1", "#b0b0b8", 112.00m, 119.00m, "CONCLUIDO");
+            f6.Historico = Hist((2022, 5, 130), (2023, 3, 130), (2024, 8, 130), (2025, 5, 130));
+            var f7 = Resumo("F7", "FUNCIONÁRIO 7", "Analista Financeiro Pl.", "Pleno-1", "#e09a86", 110.10m, 112.50m, "CONCLUIDO");
+            f7.DesagioPts = 4m;
+            f7.Historico = Hist((2022, null, 0), (2023, null, 0), (2024, null, 0), (2025, null, 0));
+            var f8 = Resumo("F8", "FUNCIONÁRIO 8", "Analista Financeiro Jr.", "Junior-1", "#86c79a", 0m, 90.00m, "NAO_INICIADO");
+            f8.DesagioPts = 8m;
+            f8.Historico = Hist((2022, null, 0), (2023, null, 0), (2024, null, 0), (2025, null, 0));
+
+            return new() { f1, f2, f3, f4, f5, f6, f7, f8 };
+        }
+
+        private static Funcionario Resumo(string id, string nome, string cargo, string grupo, string cor, decimal contrato, decimal areas, string status)
+            => new() { Id = id, Nome = nome, Cargo = cargo, Grupo = grupo, CorAvatar = cor, NotaContratoStored = contrato, NotaAreasStored = areas, StatusContrato = status };
+
+        private static Indicador Ind(string desc, params (int peso, int nota)[] tri)
+        {
+            var i = new Indicador { Descricao = desc };
+            for (int t = 0; t < 4 && t < tri.Length; t++) { i.Tri[t] = new TriValor { Peso = tri[t].peso, Nota = tri[t].nota }; }
+            return i;
+        }
+
+        private static AreaResultado Area(string nome, string sigla, string cor, decimal dist, params int[] tris)
+        {
+            var a = new AreaResultado { Nome = nome, Sigla = sigla, Cor = cor, Distribuicao = dist };
+            for (int t = 0; t < tris.Length && t < 4; t++) { a.Tri[t] = tris[t]; }
+            return a;
+        }
+    }
+}

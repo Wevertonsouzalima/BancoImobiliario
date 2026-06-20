@@ -2,8 +2,9 @@
 @using System.Globalization
 @using Componentes
 @using DllTeste.Componentes.Tabela
+@using DllTeste.Componentes.ToolTips
 
-<h3>Exemplos — BzGrid</h3>
+<h3>Exemplos — BzGrid &amp; BzPopover</h3>
 
 @if (!string.IsNullOrEmpty(_msg))
 {
@@ -138,9 +139,95 @@
     }
 </section>
 
+@* =====================================================================
+   SEÇÃO 4 — BzPopover (tooltips e popovers)
+   ===================================================================== *@
+<section class="bloco">
+    <h4>4. BzPopover — tooltips e popovers</h4>
+
+    @* ---- 4.1 Tooltips de hover (ícone + mensagem), variantes e posições ---- *@
+    <p>
+        Passe o mouse nos ícones:
+        <BzPopover Gatilho="BzPopoverGatilho.Hover" Variante="BzVariante.Info"
+                   Icone="fas fa-circle-info" Mensagem="Informação neutra para o usuário.">
+            <Trigger><i class="fas fa-circle-info" style="color:#0ea5e9;"></i></Trigger>
+        </BzPopover>
+        &nbsp;
+        <BzPopover Gatilho="BzPopoverGatilho.Hover" Posicao="BzPosicao.Direita" Variante="BzVariante.Aviso"
+                   Titulo="Atenção" Mensagem="Este campo será validado ao salvar.">
+            <Trigger><i class="fas fa-triangle-exclamation" style="color:#d97706;"></i></Trigger>
+        </BzPopover>
+        &nbsp;
+        <BzPopover Gatilho="BzPopoverGatilho.Hover" Posicao="BzPosicao.Baixo" Variante="BzVariante.Sucesso"
+                   Icone="fas fa-circle-check" Titulo="Tudo certo" Mensagem="Registro sincronizado com sucesso.">
+            <Trigger><i class="fas fa-circle-check" style="color:#16a34a;"></i></Trigger>
+        </BzPopover>
+    </p>
+
+    @* ---- 4.2 Popover de clique com ações declarativas (confirmação) ---- *@
+    <p>
+        <BzPopover Posicao="BzPosicao.Baixo" Variante="BzVariante.Perigo"
+                   Titulo="Excluir registro?" Mensagem="Esta ação não pode ser desfeita."
+                   Acoes="_acoesExcluir">
+            <Trigger><button class="btn btn--perigo"><i class="fas fa-trash"></i> Excluir</button></Trigger>
+        </BzPopover>
+        &nbsp;
+        <BzPopover Posicao="BzPosicao.Direita" Variante="BzVariante.Primario"
+                   Icone="fas fa-share-nodes" Titulo="Compartilhar"
+                   Mensagem="Escolha uma ação:" Acoes="_acoesCompartilhar">
+            <Trigger><button class="btn btn--primario"><i class="fas fa-share-nodes"></i> Compartilhar</button></Trigger>
+        </BzPopover>
+    </p>
+
+    @* ---- 4.3 Conteúdo rico (slot Conteudo) + ações via slot override ---- *@
+    <p>
+        <BzPopover Posicao="BzPosicao.Cima" Variante="BzVariante.Neutro" Titulo="Detalhes" Largura="260px">
+            <Trigger><button class="btn"><i class="fas fa-user"></i> Ver perfil</button></Trigger>
+            <Conteudo>
+                <div style="display:flex;gap:.6rem;align-items:center;">
+                    <img src="https://picsum.photos/seed/perfil/48/48" style="width:48px;height:48px;border-radius:50%;" />
+                    <div>
+                        <strong>Ana Silva</strong><br />
+                        <span style="color:#6b7280;">Desenvolvedora</span>
+                    </div>
+                </div>
+            </Conteudo>
+            <AcoesContent>
+                <button class="btn" @onclick='() => _msg = "Mensagem enviada"'>Mensagem</button>
+                <button class="btn btn--primario" @onclick='() => _msg = "Perfil aberto"'>Abrir</button>
+            </AcoesContent>
+        </BzPopover>
+    </p>
+
+    @* ---- 4.4 Controle externo via @ref (Abrir/Fechar/Alternar) ---- *@
+    <p>
+        <button class="btn" @onclick="() => _popRef?.Abrir()">Abrir por código</button>
+        <button class="btn" @onclick="() => _popRef?.Fechar()">Fechar por código</button>
+        <BzPopover @ref="_popRef" Gatilho="BzPopoverGatilho.Clique" Posicao="BzPosicao.Baixo"
+                   Variante="BzVariante.Info" Titulo="Controlado" Mensagem="Aberto/fechado via referência de código.">
+            <Trigger><span style="border-bottom:1px dashed #94a3b8;">âncora</span></Trigger>
+        </BzPopover>
+    </p>
+</section>
+
 @code {
     private string? _msg;
     private bool _carregandoProdutos;
+
+    // ---- Apoio aos exemplos de BzPopover ----
+    private BzPopover? _popRef;
+
+    private List<BzPopoverAcao> _acoesExcluir => new()
+    {
+        new("Cancelar", () => { }, BzVariante.Neutro),
+        new("Excluir", () => _msg = "Registro excluído!", BzVariante.Perigo, "fas fa-trash")
+    };
+
+    private List<BzPopoverAcao> _acoesCompartilhar => new()
+    {
+        new("Copiar link", () => _msg = "Link copiado", BzVariante.Neutro, "fas fa-link"),
+        new("Enviar", () => _msg = "Enviado", BzVariante.Primario, "fas fa-paper-plane")
+    };
 
     private List<Produto> _produtos = new();
     private List<Carro> _carros = new();
@@ -194,7 +281,6 @@
                 Categoria = cats[i % cats.Length],
                 Preco = (decimal)Math.Round(rnd.NextDouble() * 4500 + 50, 2),
                 Estoque = i % 7 == 0 ? 0 : rnd.Next(1, 80),
-                // a cada 5 itens a URL fica vazia → demonstra o fallback "sem imagem"
                 ImagemUrl = i % 5 == 0 ? "" : $"https://picsum.photos/seed/prod{i}/64/64"
             });
         }
